@@ -223,6 +223,16 @@ Holo 需要包含 LIO/TCMU 模块的完整内核包，不能使用缺少 `target
 
 Holo Web 控制台
 
+![System-overview](screenshots/System-overview.png)
+
+存储管理
+
+![Storage-Management](screenshots/Storage-Management.png)
+
+虚拟带库视图
+
+![VTL-Rack-view](screenshots/VTL-Rack-view.png)
+
 ---
 
 ## 支持的设备

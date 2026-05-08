@@ -231,6 +231,16 @@ After installation, open the Web Console:
 
 Holo Web Console
 
+![System-overview](screenshots/System-overview.png)
+
+Storage Management
+
+![Storage-Management](screenshots/Storage-Management.png)
+
+VTL Rack View
+
+![VTL-Rack-view](screenshots/VTL-Rack-view.png)
+
 ---
 
 ## Supported Devices
