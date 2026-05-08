@@ -8,7 +8,7 @@
 
 *芥子纳须弥——每一个碎片都蕴含完整的图景。*
 
-English | [简体中文](README-CN.md)
+[English](README.md) | 简体中文
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00FF88?style=flat-square)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.78+-000000?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
