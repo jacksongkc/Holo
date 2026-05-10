@@ -11,6 +11,7 @@ type MetricsRegistry struct {
 	AuditEventsTotal   int64
 	AuditWriteFailures int64
 	AuditJournalFailed int64
+	AuditParseFailures int64
 	ScsiSenseErrors    int64
 	DedupHitsTotal     int64
 	CompressionRatio   uint64 // stored as float64 bits
@@ -75,6 +76,13 @@ func (r *MetricsRegistry) RecordAuditWriteFailure() {
 
 func (r *MetricsRegistry) RecordAuditJournalSuccess() {
 	atomic.StoreInt64(&r.AuditJournalFailed, 0)
+}
+
+func (r *MetricsRegistry) RecordAuditJournalParseFailures(count int64) {
+	if count <= 0 {
+		return
+	}
+	atomic.AddInt64(&r.AuditParseFailures, count)
 }
 
 func (r *MetricsRegistry) SetAuditEventsTotal(total int64) {

@@ -28,9 +28,9 @@ fn shared_changer_inventory_enabled(state: &TapeState) -> bool {
         || shared_changer_vault_path(&media_state_key).exists()
 }
 
-fn auto_archive_ie_media_to_vault(state: &mut TapeState) {
+fn auto_archive_ie_media_to_vault(state: &mut TapeState) -> Result<(), CdbResponse> {
     if !shared_changer_inventory_enabled(state) {
-        return;
+        return Ok(());
     }
 
     let media_state_key = media_state_key_for_state(state);
@@ -63,7 +63,7 @@ fn auto_archive_ie_media_to_vault(state: &mut TapeState) {
         changed = true;
     }
     if !changed {
-        return;
+        return Ok(());
     }
 
     let ie_ports = state
@@ -71,11 +71,14 @@ fn auto_archive_ie_media_to_vault(state: &mut TapeState) {
         .values()
         .cloned()
         .collect::<Vec<Option<String>>>();
+    // Multi-file atomic IE+vault commit is a separate redesign; this path makes
+    // the current write failures visible to callers instead of stderr-only.
     if let Err(err) = write_shared_changer_ie(&media_state_key, &ie_ports) {
         eprintln!(
             "[cdb_sync] failed to persist auto-cleared changer IE drive_id={} key={} error={err}",
             state.drive_id, media_state_key
         );
+        return Err(internal_target_failure_response());
     }
     let vault_labels = exported.into_iter().map(Some).collect::<Vec<_>>();
     if let Err(err) = write_shared_changer_vault(&media_state_key, &vault_labels) {
@@ -83,7 +86,9 @@ fn auto_archive_ie_media_to_vault(state: &mut TapeState) {
             "[cdb_sync] failed to persist changer vault drive_id={} key={} error={err}",
             state.drive_id, media_state_key
         );
+        return Err(internal_target_failure_response());
     }
+    Ok(())
 }
 
 pub(crate) fn changer_drive_identifier_designator_for_seed(seed: &str) -> Vec<u8> {
@@ -303,7 +308,9 @@ pub(crate) fn move_medium_changer(state: &mut TapeState, cdb: &[u8]) -> CdbRespo
         return invalid_element_address_response();
     }
 
-    auto_archive_ie_media_to_vault(state);
+    if let Err(response) = auto_archive_ie_media_to_vault(state) {
+        return response;
+    }
 
     if changer_ie_accessed(state, source, destination) {
         push_ie_accessed_unit_attention(state);
@@ -365,7 +372,9 @@ pub(crate) fn exchange_medium_changer(state: &mut TapeState, cdb: &[u8]) -> CdbR
         }
     }
 
-    auto_archive_ie_media_to_vault(state);
+    if let Err(response) = auto_archive_ie_media_to_vault(state) {
+        return response;
+    }
 
     if changer_ie_accessed(state, source, destination_1)
         || changer_ie_accessed(state, source, destination_2)
@@ -660,6 +669,11 @@ pub(crate) fn reserve_release_compat_response() -> CdbResponse {
 pub(crate) fn invalid_field_in_parameter_list_response() -> CdbResponse {
     // ILLEGAL REQUEST / INVALID FIELD IN PARAMETER LIST
     CdbResponse::check_condition(build_sense_fixed(0x05, 0x26, 0x00))
+}
+
+pub(crate) fn internal_target_failure_response() -> CdbResponse {
+    // HARDWARE ERROR / INTERNAL TARGET FAILURE.
+    CdbResponse::check_condition(build_sense_fixed(0x04, 0x44, 0x00))
 }
 
 pub(crate) fn saving_parameters_not_supported_response() -> CdbResponse {

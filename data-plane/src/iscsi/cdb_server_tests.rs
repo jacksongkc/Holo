@@ -24,7 +24,7 @@ mod tests {
             lookup_file: root.join("lookup.segment"),
             reclaim_file: root.join("reclaim.segment"),
             dedup_file: root.join("dedup.segment"),
-        segment_index_file: root.join("segment_index.segment"),
+            segment_index_file: root.join("segment_index.segment"),
         }
     }
 
@@ -38,8 +38,7 @@ mod tests {
         cdb[8..10].copy_from_slice(&attr.to_be_bytes());
         let response = dispatch_raw_cdb(state, &cdb, &[]);
         assert_eq!(
-            response.status,
-            SCSI_STATUS_GOOD,
+            response.status, SCSI_STATUS_GOOD,
             "sense={:?}",
             response.sense
         );
@@ -150,11 +149,8 @@ mod tests {
     fn test_cdb_packet_encode_decode_with_initiator_roundtrip() {
         let cdb = vec![0x5F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00];
         let data = vec![0x00; 24];
-        let pkt = CdbPacket::with_initiator(
-            cdb.clone(),
-            data.clone(),
-            "iqn.1993-08.org.debian:host-a",
-        );
+        let pkt =
+            CdbPacket::with_initiator(cdb.clone(), data.clone(), "iqn.1993-08.org.debian:host-a");
         let mut buf = Vec::new();
         pkt.encode(&mut buf).expect("encode failed");
         let mut cursor = Cursor::new(&buf);
@@ -510,8 +506,7 @@ mod tests {
         let response = dispatch_raw_cdb(&mut state, &cdb, &[]);
 
         assert_eq!(
-            response.status,
-            SCSI_STATUS_GOOD,
+            response.status, SCSI_STATUS_GOOD,
             "sense={:?}",
             response.sense
         );
@@ -533,8 +528,7 @@ mod tests {
         let response = dispatch_changer_cdb(&mut state, &cdb, &[], profile);
 
         assert_eq!(
-            response.status,
-            SCSI_STATUS_GOOD,
+            response.status, SCSI_STATUS_GOOD,
             "sense={:?}",
             response.sense
         );
@@ -565,8 +559,7 @@ mod tests {
         let cdb = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let response = dispatch_raw_cdb(&mut state, &cdb, &[]);
         assert_eq!(
-            response.status,
-            SCSI_STATUS_GOOD,
+            response.status, SCSI_STATUS_GOOD,
             "write6 multi-block sense={:?}",
             response.sense
         );
@@ -1075,7 +1068,10 @@ mod tests {
         ];
         let response = dispatch_changer_cdb(&mut state, &unload_to_original_slot, &[], profile);
         assert_eq!(response.status, SCSI_STATUS_GOOD);
-        assert_eq!(state.changer_drives.get(&0x0100).and_then(|v| v.as_deref()), None);
+        assert_eq!(
+            state.changer_drives.get(&0x0100).and_then(|v| v.as_deref()),
+            None
+        );
         assert_eq!(
             state.changer_slots.get(&0x040E).and_then(|v| v.as_deref()),
             Some("VTA014L06")
@@ -1186,7 +1182,10 @@ mod tests {
             state.changer_drives.get(&0x0100).and_then(|v| v.as_deref()),
             Some("VTL000001")
         );
-        assert_eq!(state.changer_slots.get(&0x0400).and_then(|v| v.as_deref()), None);
+        assert_eq!(
+            state.changer_slots.get(&0x0400).and_then(|v| v.as_deref()),
+            None
+        );
 
         write_shared_loaded_cartridge(&key, None).expect("clear loaded state");
         let drive_status_cdb = vec![
@@ -1197,7 +1196,10 @@ mod tests {
         ];
         let status = dispatch_changer_cdb(&mut state, &drive_status_cdb, &[], profile);
         assert_eq!(status.status, SCSI_STATUS_GOOD);
-        assert_eq!(state.changer_drives.get(&0x0100).and_then(|v| v.as_deref()), None);
+        assert_eq!(
+            state.changer_drives.get(&0x0100).and_then(|v| v.as_deref()),
+            None
+        );
         assert_eq!(
             state.changer_slots.get(&0x0400).and_then(|v| v.as_deref()),
             Some("VTL000001")
@@ -1236,18 +1238,15 @@ mod tests {
             state.changer_drives.get(&0x0100).and_then(|v| v.as_deref()),
             Some("VTA000L05")
         );
-        assert_eq!(state.changer_slots.get(&0x0400).and_then(|v| v.as_deref()), None);
+        assert_eq!(
+            state.changer_slots.get(&0x0400).and_then(|v| v.as_deref()),
+            None
+        );
 
-        write_shared_changer_slots(
-            &key,
-            &[
-                Some("VTA000L05".to_string()),
-                None,
-                None,
-            ],
-        )
-        .expect("write switched slots");
-        write_shared_loaded_cartridge(&key, Some("VTA001L05")).expect("write switched loaded state");
+        write_shared_changer_slots(&key, &[Some("VTA000L05".to_string()), None, None])
+            .expect("write switched slots");
+        write_shared_loaded_cartridge(&key, Some("VTA001L05"))
+            .expect("write switched loaded state");
 
         let drive_status_cdb = vec![
             0xB8, 0x04, // element type = drive
@@ -1282,15 +1281,8 @@ mod tests {
         let mut state = crate::scsi_tape::state::TapeState::new(key.clone());
         let profile = crate::scsi_tape::profiles::resolve_changer_profile("ibm-03584l32");
 
-        write_shared_changer_slots(
-            &key,
-            &[
-                Some("VTA000L05".to_string()),
-                None,
-                None,
-            ],
-        )
-        .expect("write slots");
+        write_shared_changer_slots(&key, &[Some("VTA000L05".to_string()), None, None])
+            .expect("write slots");
         write_shared_changer_ie(&key, &[Some("VTA009L05".to_string())]).expect("write IE");
 
         let ie_status_cdb = vec![
@@ -1302,7 +1294,10 @@ mod tests {
         let status = dispatch_changer_cdb(&mut state, &ie_status_cdb, &[], profile);
         assert_eq!(status.status, SCSI_STATUS_GOOD);
         assert_eq!(
-            state.changer_ie_ports.get(&0x0300).and_then(|v| v.as_deref()),
+            state
+                .changer_ie_ports
+                .get(&0x0300)
+                .and_then(|v| v.as_deref()),
             Some("VTA009L05")
         );
         assert_eq!(status.reply[16 + 2] & 0x01, 0x01);
@@ -1345,8 +1340,14 @@ mod tests {
         );
         assert_eq!(mode_sense.status, SCSI_STATUS_GOOD);
         let assignment_page = &mode_sense.reply[8..28];
-        assert_eq!(u16::from_be_bytes([assignment_page[10], assignment_page[11]]), 0x0300);
-        assert_eq!(u16::from_be_bytes([assignment_page[12], assignment_page[13]]), 4);
+        assert_eq!(
+            u16::from_be_bytes([assignment_page[10], assignment_page[11]]),
+            0x0300
+        );
+        assert_eq!(
+            u16::from_be_bytes([assignment_page[12], assignment_page[13]]),
+            4
+        );
 
         let _ = std::fs::remove_file(shared_changer_ie_path(&key));
     }
@@ -1373,7 +1374,10 @@ mod tests {
         let response = dispatch_changer_cdb(&mut state, &export_cdb, &[], profile);
         assert_eq!(response.status, SCSI_STATUS_GOOD);
         assert_eq!(
-            state.changer_ie_ports.get(&0x0300).and_then(|value| value.as_deref()),
+            state
+                .changer_ie_ports
+                .get(&0x0300)
+                .and_then(|value| value.as_deref()),
             None
         );
         let persisted_ie = read_shared_changer_ie(&key)
@@ -1388,6 +1392,64 @@ mod tests {
 
         let _ = std::fs::remove_file(shared_changer_ie_path(&key));
         let _ = std::fs::remove_file(shared_changer_vault_path(&key));
+    }
+
+    #[test]
+    fn test_changer_auto_archive_ie_persist_failure_returns_check_condition() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let key = format!("lib-auto-ie-fail-{nanos}__drivea");
+        let mut state = crate::scsi_tape::state::TapeState::new(key.clone());
+        let profile = crate::scsi_tape::profiles::resolve_changer_profile("ibm-03584l32");
+        let ie_path = shared_changer_ie_path(&key);
+        let vault_path = shared_changer_vault_path(&key);
+        let _ = std::fs::remove_file(&ie_path);
+        let _ = std::fs::remove_file(&vault_path);
+        let _ = std::fs::remove_dir_all(&ie_path);
+        std::fs::create_dir_all(&ie_path).expect("create unwritable IE target");
+
+        let export_cdb = vec![
+            0xA5, 0x00, 0x00, 0x00, 0x04, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let response = dispatch_changer_cdb(&mut state, &export_cdb, &[], profile);
+
+        assert_ne!(response.status, SCSI_STATUS_GOOD);
+        assert_eq!(response.sense.get(2).copied().unwrap_or(0) & 0x0F, 0x04);
+        assert_eq!(response.sense.get(12).copied().unwrap_or(0), 0x44);
+
+        let _ = std::fs::remove_dir_all(&ie_path);
+        let _ = std::fs::remove_file(&vault_path);
+    }
+
+    #[test]
+    fn test_changer_auto_archive_vault_persist_failure_returns_check_condition() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let key = format!("lib-auto-vault-fail-{nanos}__drivea");
+        let mut state = crate::scsi_tape::state::TapeState::new(key.clone());
+        let profile = crate::scsi_tape::profiles::resolve_changer_profile("ibm-03584l32");
+        let ie_path = shared_changer_ie_path(&key);
+        let vault_path = shared_changer_vault_path(&key);
+        let _ = std::fs::remove_file(&ie_path);
+        let _ = std::fs::remove_file(&vault_path);
+        let _ = std::fs::remove_dir_all(&vault_path);
+        std::fs::create_dir_all(&vault_path).expect("create unwritable vault target");
+
+        let export_cdb = vec![
+            0xA5, 0x00, 0x00, 0x00, 0x04, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let response = dispatch_changer_cdb(&mut state, &export_cdb, &[], profile);
+
+        assert_ne!(response.status, SCSI_STATUS_GOOD);
+        assert_eq!(response.sense.get(2).copied().unwrap_or(0) & 0x0F, 0x04);
+        assert_eq!(response.sense.get(12).copied().unwrap_or(0), 0x44);
+
+        let _ = std::fs::remove_file(&ie_path);
+        let _ = std::fs::remove_dir_all(&vault_path);
     }
 
     #[test]
@@ -1487,7 +1549,10 @@ mod tests {
         let reported = u16::from_be_bytes([read_status.reply[2], read_status.reply[3]]);
         assert_eq!(reported, 20);
         assert_eq!(
-            state.changer_slots.get(&0x0413).and_then(|value| value.as_deref()),
+            state
+                .changer_slots
+                .get(&0x0413)
+                .and_then(|value| value.as_deref()),
             Some("VTA019L06")
         );
 
@@ -2134,11 +2199,8 @@ mod tests {
         assert_eq!(attr_u64(&mut state, 0x0001), 42 * 1024);
         assert_eq!(attr_u64(&mut state, 0x0407), 42 * 1024);
 
-        let mode_sense = dispatch_raw_cdb(
-            &mut state,
-            &[0x5A, 0x00, 0x10, 0, 0, 0, 0, 0, 0x40, 0],
-            &[],
-        );
+        let mode_sense =
+            dispatch_raw_cdb(&mut state, &[0x5A, 0x00, 0x10, 0, 0, 0, 0, 0, 0x40, 0], &[]);
         assert_eq!(mode_sense.status, SCSI_STATUS_GOOD);
         assert_eq!(mode_sense.reply[2], 0x00);
         assert_eq!(&mode_sense.reply[6..8], &[0x00, 0x08]);
@@ -2160,11 +2222,8 @@ mod tests {
         ]);
         assert_eq!(reported_block_len, DRIVE_DEFAULT_BLOCK_LENGTH);
 
-        let medium_descriptor = dispatch_raw_cdb(
-            &mut state,
-            &[0x44, 0x02, 0, 0, 0, 0, 0, 0x01, 0, 0],
-            &[],
-        );
+        let medium_descriptor =
+            dispatch_raw_cdb(&mut state, &[0x44, 0x02, 0, 0, 0, 0, 0, 0x01, 0, 0], &[]);
         assert_eq!(medium_descriptor.status, SCSI_STATUS_GOOD);
         let expected_product = b"HOLO Custom Tape";
         assert!(
@@ -2315,8 +2374,7 @@ mod tests {
         write_cdb[10..14].copy_from_slice(&payload_len.to_be_bytes());
         let write_response = dispatch_raw_cdb(&mut state, &write_cdb, &payload);
         assert_eq!(
-            write_response.status,
-            SCSI_STATUS_GOOD,
+            write_response.status, SCSI_STATUS_GOOD,
             "sense={:?}",
             write_response.sense
         );
@@ -2356,8 +2414,7 @@ mod tests {
         write_cdb[10..14].copy_from_slice(&(payload.len() as u32).to_be_bytes());
         let write_response = dispatch_raw_cdb(&mut state, &write_cdb, &payload);
         assert_eq!(
-            write_response.status,
-            SCSI_STATUS_GOOD,
+            write_response.status, SCSI_STATUS_GOOD,
             "sense={:?}",
             write_response.sense
         );
@@ -2414,8 +2471,7 @@ mod tests {
         write_cdb[10..14].copy_from_slice(&(payload.len() as u32).to_be_bytes());
         let write_response = dispatch_raw_cdb(&mut state, &write_cdb, &payload);
         assert_eq!(
-            write_response.status,
-            SCSI_STATUS_GOOD,
+            write_response.status, SCSI_STATUS_GOOD,
             "sense={:?}",
             write_response.sense
         );
@@ -2502,9 +2558,7 @@ mod tests {
             0x0F, 0x0E, // data compression page
             0x40, // DCC only, DCE disabled
             0x80, // decompression enabled
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let cdb = vec![
             0x55,
@@ -2547,9 +2601,7 @@ mod tests {
             0x0F, 0x0E, // data compression page
             0xC0, // DCC + DCE requested
             0x80, // decompression enabled
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let cdb = vec![
             0x55,
@@ -2701,8 +2753,14 @@ mod tests {
         );
         assert_eq!(response_b.status, SCSI_STATUS_GOOD);
 
-        assert_eq!(state.reservation_state.registrations.get("host-a"), Some(&key_a));
-        assert_eq!(state.reservation_state.registrations.get("host-b"), Some(&key_b));
+        assert_eq!(
+            state.reservation_state.registrations.get("host-a"),
+            Some(&key_a)
+        );
+        assert_eq!(
+            state.reservation_state.registrations.get("host-b"),
+            Some(&key_b)
+        );
 
         let mut reserve_a = vec![0u8; 24];
         reserve_a[0..8].copy_from_slice(&key_a.to_be_bytes());
@@ -2756,8 +2814,7 @@ mod tests {
             &0x5555_6666_7777_8888u64.to_be_bytes()
         );
 
-        let read_reservation_cdb =
-            vec![0x5E, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00];
+        let read_reservation_cdb = vec![0x5E, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00];
         let reservation_response = dispatch_raw_cdb(&mut state, &read_reservation_cdb, &[]);
         assert_eq!(reservation_response.status, SCSI_STATUS_GOOD);
         assert_eq!(&reservation_response.reply[0..4], &3u32.to_be_bytes());
@@ -2826,7 +2883,11 @@ mod tests {
             &move_params,
             CdbDispatchContext::with_initiator("iqn.1993-08.org.debian:host-a"),
         );
-        assert_eq!(move_response.status, SCSI_STATUS_GOOD, "sense={:?}", move_response.sense);
+        assert_eq!(
+            move_response.status, SCSI_STATUS_GOOD,
+            "sense={:?}",
+            move_response.sense
+        );
 
         assert!(!state
             .reservation_state
@@ -3009,8 +3070,7 @@ mod tests {
         let response =
             dispatch_fixed_block_io(&mut state, &cdb, &payload).expect("fixed write should apply");
         assert_eq!(
-            response.status,
-            SCSI_STATUS_GOOD,
+            response.status, SCSI_STATUS_GOOD,
             "write6 multi-block sense={:?}",
             response.sense
         );
@@ -3035,8 +3095,7 @@ mod tests {
         let write_response =
             dispatch_fixed_block_io(&mut state, &write_cdb, &payload).expect("fixed write apply");
         assert_eq!(
-            write_response.status,
-            SCSI_STATUS_GOOD,
+            write_response.status, SCSI_STATUS_GOOD,
             "read6 setup write sense={:?}",
             write_response.sense
         );
@@ -3057,9 +3116,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let mut state = crate::scsi_tape::state::TapeState::new(format!(
-            "drive-write6-fixed-mismatch-{nanos}"
-        ));
+        let mut state =
+            crate::scsi_tape::state::TapeState::new(format!("drive-write6-fixed-mismatch-{nanos}"));
         crate::media::mount_bridge::attach_cartridge(&mut state, "VTAFIXED003").expect("attach");
         state.block_mode.mode = crate::scsi_tape::state::BlockMode::Fixed;
         state.block_mode.fixed_block_size = 262_144;
@@ -3145,7 +3203,11 @@ mod tests {
         state.retention_policy.is_worm_media = true;
         state.retention_policy.retention_locked = true;
 
-        let allow = dispatch_raw_cdb(&mut state, &[0x82, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], &[]);
+        let allow = dispatch_raw_cdb(
+            &mut state,
+            &[0x82, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            &[],
+        );
         assert_eq!(allow.status, SCSI_STATUS_GOOD);
         assert_eq!(
             state.allow_overwrite,
@@ -3175,7 +3237,11 @@ mod tests {
             block_address: 0,
         });
 
-        let allow = dispatch_raw_cdb(&mut state, &[0x82, 0, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], &[]);
+        let allow = dispatch_raw_cdb(
+            &mut state,
+            &[0x82, 0, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            &[],
+        );
         assert_eq!(allow.status, SCSI_STATUS_GOOD);
         assert_eq!(
             state.allow_overwrite,
@@ -3192,7 +3258,11 @@ mod tests {
         assert_eq!(write.sense[12], 0x30);
         assert_eq!(write.sense[13], 0x0C);
 
-        let clear = dispatch_raw_cdb(&mut state, &[0x82, 0, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], &[]);
+        let clear = dispatch_raw_cdb(
+            &mut state,
+            &[0x82, 0, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            &[],
+        );
         assert_eq!(clear.status, SCSI_STATUS_GOOD);
         assert_eq!(state.allow_overwrite, None);
     }
@@ -3202,7 +3272,9 @@ mod tests {
         let mut state = crate::scsi_tape::state::TapeState::new("compat-changer-cmds");
         let profile = crate::scsi_tape::profiles::resolve_changer_profile("ibm-03584l32");
         state.changer_slots.insert(0x0400, None);
-        state.changer_slots.insert(0x0401, Some("CUSTOM01".to_string()));
+        state
+            .changer_slots
+            .insert(0x0401, Some("CUSTOM01".to_string()));
         state.changer_ie_impexp.insert(0x0300, false);
 
         let rezero = dispatch_changer_cdb(&mut state, &[0x01, 0, 0, 0, 0, 0], &[], profile.clone());
@@ -3213,7 +3285,12 @@ mod tests {
             Some(&Some("CUSTOM01".to_string()))
         );
 
-        let open = dispatch_changer_cdb(&mut state, &[0x1B, 0, 0x03, 0x00, 0x01, 0], &[], profile.clone());
+        let open = dispatch_changer_cdb(
+            &mut state,
+            &[0x1B, 0, 0x03, 0x00, 0x01, 0],
+            &[],
+            profile.clone(),
+        );
         assert_eq!(open.status, SCSI_STATUS_GOOD);
         assert_eq!(state.changer_ie_impexp.get(&0x0300), Some(&true));
 
@@ -3227,7 +3304,8 @@ mod tests {
         let mut state = crate::scsi_tape::state::TapeState::new("compat-changer-reserve-release");
         let profile = crate::scsi_tape::profiles::resolve_changer_profile("ibm-03584l32");
 
-        let reserve6 = dispatch_changer_cdb(&mut state, &[0x16, 0, 0, 0, 0, 0], &[], profile.clone());
+        let reserve6 =
+            dispatch_changer_cdb(&mut state, &[0x16, 0, 0, 0, 0, 0], &[], profile.clone());
         assert_eq!(reserve6.status, SCSI_STATUS_GOOD);
         let release6 = dispatch_changer_cdb(&mut state, &[0x17, 0, 0, 0, 0, 0], &[], profile);
         assert_eq!(release6.status, SCSI_STATUS_GOOD);
@@ -3254,11 +3332,8 @@ mod tests {
         assert_eq!(mode.status, SCSI_STATUS_GOOD);
         assert!(mode.reply.windows(2).any(|pair| pair == [0x1C, 0x0A]));
 
-        let supported = dispatch_raw_cdb(
-            &mut state,
-            &[0x4D, 0x00, 0x00, 0, 0, 0, 0, 0, 0x40, 0],
-            &[],
-        );
+        let supported =
+            dispatch_raw_cdb(&mut state, &[0x4D, 0x00, 0x00, 0, 0, 0, 0, 0, 0x40, 0], &[]);
         assert_eq!(supported.status, SCSI_STATUS_GOOD);
         for page in [0x02u8, 0x03, 0x0C, 0x17, 0x31, 0x32, 0x37] {
             assert!(
@@ -3267,11 +3342,8 @@ mod tests {
             );
         }
 
-        let sequential = dispatch_raw_cdb(
-            &mut state,
-            &[0x4D, 0x00, 0x0C, 0, 0, 0, 0, 0, 0x80, 0],
-            &[],
-        );
+        let sequential =
+            dispatch_raw_cdb(&mut state, &[0x4D, 0x00, 0x0C, 0, 0, 0, 0, 0, 0x80, 0], &[]);
         assert_eq!(sequential.status, SCSI_STATUS_GOOD);
         assert_eq!(log_param_u32(&sequential.reply, 0x0001), Some(2));
         assert_eq!(log_param_u32(&sequential.reply, 0x0002), Some(1));
@@ -3279,11 +3351,8 @@ mod tests {
         assert_eq!(log_param_u32(&sequential.reply, 0x0004), None);
         assert_eq!(log_param_u32(&sequential.reply, 0x0005), None);
 
-        let performance = dispatch_raw_cdb(
-            &mut state,
-            &[0x4D, 0x00, 0x37, 0, 0, 0, 0, 0, 0x40, 0],
-            &[],
-        );
+        let performance =
+            dispatch_raw_cdb(&mut state, &[0x4D, 0x00, 0x37, 0, 0, 0, 0, 0, 0x40, 0], &[]);
         assert_eq!(performance.status, SCSI_STATUS_GOOD);
         assert_eq!(log_param_u32(&performance.reply, 0x0001), Some(160));
     }
@@ -3298,29 +3367,19 @@ mod tests {
         state.usage_counters.last_load_write_ops = 4;
         state.usage_counters.last_load_bytes_written = 1024 * 1024;
 
-        let sequential = dispatch_raw_cdb(
-            &mut state,
-            &[0x4D, 0x00, 0x0C, 0, 0, 0, 0, 0, 0x80, 0],
-            &[],
-        );
+        let sequential =
+            dispatch_raw_cdb(&mut state, &[0x4D, 0x00, 0x0C, 0, 0, 0, 0, 0, 0x80, 0], &[]);
         assert_eq!(sequential.status, SCSI_STATUS_GOOD);
         assert_eq!(log_param_u32(&sequential.reply, 0x0004), None);
         assert_eq!(log_param_u32(&sequential.reply, 0x0005), None);
 
-        let capacity = dispatch_raw_cdb(
-            &mut state,
-            &[0x4D, 0x00, 0x31, 0, 0, 0, 0, 0, 0x40, 0],
-            &[],
-        );
+        let capacity =
+            dispatch_raw_cdb(&mut state, &[0x4D, 0x00, 0x31, 0, 0, 0, 0, 0, 0x40, 0], &[]);
         assert_eq!(capacity.status, SCSI_STATUS_GOOD);
         assert_eq!(log_param_u32(&capacity.reply, 0x0002), Some(0));
         assert!(log_param_u32(&capacity.reply, 0x0003).unwrap_or(0) > 1024);
 
-        let volume = dispatch_raw_cdb(
-            &mut state,
-            &[0x4D, 0x00, 0x17, 0, 0, 0, 0, 0, 0xC0, 0],
-            &[],
-        );
+        let volume = dispatch_raw_cdb(&mut state, &[0x4D, 0x00, 0x17, 0, 0, 0, 0, 0, 0xC0, 0], &[]);
         assert_eq!(volume.status, SCSI_STATUS_GOOD);
         assert_eq!(log_param_u32(&volume.reply, 0x0001), Some(7));
         assert_eq!(log_partition_param_u32(&volume.reply, 0x0203, 0), Some(1));

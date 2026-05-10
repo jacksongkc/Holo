@@ -159,13 +159,22 @@ func newLIOShellTargetRuntimeAdapter(cfg TargetRuntimeConfig, runner commandRunn
 }
 
 func (a *lioShellTargetRuntimeAdapter) Publish(ctx context.Context, publication *domain.TargetPublication) (string, error) {
-	backstoreDir := lioBackstoreDir(a.cfg, publication)
+	if err := validateTargetPublicationForRuntime(publication); err != nil {
+		return "", err
+	}
+	backstoreDir, err := lioBackstoreDir(a.cfg, publication)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(backstoreDir, 0o755); err != nil {
 		return "", fmt.Errorf("create backstore directory: %w", err)
 	}
 
 	backstoreName := runtimeBackstoreName(publication)
-	backstorePath := runtimeBackstorePath(backstoreDir, backstoreName)
+	backstorePath, err := runtimeBackstorePath(backstoreDir, backstoreName)
+	if err != nil {
+		return "", err
+	}
 	if err := ensureBackstoreImage(backstorePath, a.cfg.BackstoreSizeMB); err != nil {
 		return "", err
 	}
@@ -210,6 +219,9 @@ func (a *lioShellTargetRuntimeAdapter) Publish(ctx context.Context, publication 
 }
 
 func (a *lioShellTargetRuntimeAdapter) Unpublish(ctx context.Context, publication *domain.TargetPublication) error {
+	if err := validateTargetPublicationForRuntime(publication); err != nil {
+		return err
+	}
 	backstoreName := runtimeBackstoreName(publication)
 
 	if err := a.deleteTarget(ctx, publication.TargetIQN); err != nil {
@@ -219,7 +231,14 @@ func (a *lioShellTargetRuntimeAdapter) Unpublish(ctx context.Context, publicatio
 		return err
 	}
 
-	backstorePath := runtimeBackstorePath(lioBackstoreDir(a.cfg, publication), backstoreName)
+	backstoreDir, err := lioBackstoreDir(a.cfg, publication)
+	if err != nil {
+		return err
+	}
+	backstorePath, err := runtimeBackstorePath(backstoreDir, backstoreName)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(backstorePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove backstore image: %w", err)
 	}
@@ -243,6 +262,9 @@ func (a *lioShellTargetRuntimeAdapter) deleteBackstore(ctx context.Context, back
 }
 
 func (a *lioShellTargetRuntimeAdapter) runTargetcli(ctx context.Context, args ...string) error {
+	if err := validateTargetcliArgs(args...); err != nil {
+		return err
+	}
 	cmd, cmdArgs := targetcliCommand(a.cfg.UseSudo, args...)
 	if _, err := a.runner.Run(ctx, cmd, cmdArgs...); err != nil {
 		return err
@@ -289,15 +311,29 @@ func runtimeBackstoreName(publication *domain.TargetPublication) string {
 	return "holo_" + name
 }
 
-func runtimeBackstorePath(backstoreDir, backstoreName string) string {
-	return filepath.Join(backstoreDir, backstoreName+".img")
+func runtimeBackstorePath(backstoreDir, backstoreName string) (string, error) {
+	if !isSafeTargetcliToken(backstoreName) {
+		return "", domain.ErrInvalidInput
+	}
+	return storageutil.SafeJoin(backstoreDir, backstoreName+".img")
 }
 
-func lioBackstoreDir(cfg TargetRuntimeConfig, publication *domain.TargetPublication) string {
+func lioBackstoreDir(cfg TargetRuntimeConfig, publication *domain.TargetPublication) (string, error) {
 	if publication != nil && strings.TrimSpace(publication.PoolID) != "" {
-		return filepath.Join(storageutil.PoolStorageRoot(publication.PoolID), "targets")
+		poolBase := storageutil.ResolvePoolStorageBaseDir()
+		if err := storageutil.ValidateRoot(storageutil.RootKindPool, poolBase); err != nil {
+			return "", err
+		}
+		poolRoot, err := storageutil.SafeJoin(poolBase, storageutil.SanitizeLayoutID(publication.PoolID))
+		if err != nil {
+			return "", err
+		}
+		return storageutil.SafeJoin(poolRoot, "targets")
 	}
-	return cfg.BackstoreDir
+	if err := storageutil.ValidateRoot(storageutil.RootKindBackstore, cfg.BackstoreDir); err != nil {
+		return "", err
+	}
+	return filepath.Clean(cfg.BackstoreDir), nil
 }
 
 func ensureBackstoreImage(path string, sizeMB int) error {
@@ -749,6 +785,53 @@ func safeActor(actor string) string {
 		return "system"
 	}
 	return actor
+}
+
+var targetcliTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+
+func validateTargetPublicationForRuntime(publication *domain.TargetPublication) error {
+	if publication == nil {
+		return domain.ErrInvalidInput
+	}
+	if _, err := normalizeTargetIQN(publication.TargetIQN, publication.DriveID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(publication.PublicationID) == "" || strings.TrimSpace(publication.PoolID) == "" {
+		return domain.ErrInvalidInput
+	}
+	if !isSafeTargetcliToken(storageutil.SanitizeLayoutID(publication.PoolID)) {
+		return domain.ErrInvalidInput
+	}
+	if !isSafeTargetcliToken(runtimeBackstoreName(publication)) {
+		return domain.ErrInvalidInput
+	}
+	return nil
+}
+
+func validateTargetcliArgs(args ...string) error {
+	for _, arg := range args {
+		if strings.TrimSpace(arg) == "" || strings.ContainsRune(arg, '\x00') || strings.ContainsAny(arg, "\r\n") {
+			return domain.ErrInvalidInput
+		}
+		if strings.Contains(arg, "..") {
+			return domain.ErrInvalidInput
+		}
+		if strings.HasPrefix(arg, "/iscsi/") {
+			iqn := strings.Trim(strings.TrimPrefix(arg, "/iscsi/"), "/")
+			if idx := strings.Index(iqn, "/"); idx >= 0 {
+				iqn = iqn[:idx]
+			}
+			if _, err := normalizeTargetIQN(iqn, ""); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func isSafeTargetcliToken(value string) bool {
+	value = strings.TrimSpace(value)
+	return value != "" && targetcliTokenPattern.MatchString(value)
 }
 
 var targetIQNPattern = regexp.MustCompile(`^iqn\.\d{4}-\d{2}\.[a-z0-9][a-z0-9.-]*:[a-z0-9][a-z0-9:.-]*$`)

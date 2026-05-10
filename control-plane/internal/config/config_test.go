@@ -81,3 +81,38 @@ func TestLoad_InvalidNumericAndBoolEnvLogAndFallback(t *testing.T) {
 		t.Fatalf("parse failure log should not include raw env values, got %q", got)
 	}
 }
+
+func TestLoadE_InvalidNumericAndBoolEnvReturnsError(t *testing.T) {
+	t.Setenv("HOLO_TARGET_PORTAL_PORT", "bad-port\nsecret")
+	t.Setenv("HOLO_TARGET_BACKSTORE_SIZE_MB", "not-a-size\nsecret")
+	t.Setenv("HOLO_TARGET_RUNTIME_USE_SUDO", "not-bool\nsecret")
+
+	cfg, err := LoadE()
+	if err == nil {
+		t.Fatal("expected invalid env values to return an error")
+	}
+	if cfg.TargetPortalPort != 3260 {
+		t.Fatalf("expected invalid portal port to keep fallback in returned config, got %d", cfg.TargetPortalPort)
+	}
+	got := err.Error()
+	for _, envName := range []string{"HOLO_TARGET_PORTAL_PORT", "HOLO_TARGET_BACKSTORE_SIZE_MB", "HOLO_TARGET_RUNTIME_USE_SUDO"} {
+		if !strings.Contains(got, envName) {
+			t.Fatalf("expected error to include %s, got %q", envName, got)
+		}
+	}
+	if strings.Contains(got, "secret") {
+		t.Fatalf("parse failure error should not include raw env values, got %q", got)
+	}
+}
+
+func TestLoadE_EmptyAPIKeyIsAllowed(t *testing.T) {
+	t.Setenv("HOLO_API_KEY", "")
+
+	cfg, err := LoadE()
+	if err != nil {
+		t.Fatalf("expected empty API key to be allowed, got %v", err)
+	}
+	if cfg.APIKey != "" {
+		t.Fatalf("expected empty API key default, got %q", cfg.APIKey)
+	}
+}

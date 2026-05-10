@@ -95,7 +95,7 @@ func (h *TargetHandler) handlePublications(w http.ResponseWriter, r *http.Reques
 		}
 		respondJSON(w, http.StatusOK, latestPublicationsByIQN(publications))
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
@@ -157,7 +157,7 @@ func (h *TargetHandler) handlePublicationSubresource(w http.ResponseWriter, r *h
 	path := strings.TrimPrefix(r.URL.Path, "/v1/targets/publications/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) < 1 || parts[0] == "" {
-		http.Error(w, "publication id required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "publication id required", nil)
 		return
 	}
 	publicationID := parts[0]
@@ -176,30 +176,30 @@ func (h *TargetHandler) handlePublicationSubresource(w http.ResponseWriter, r *h
 		h.handleValidationRuns(w, r, publicationID)
 	case "access-rules":
 		if h.access == nil {
-			http.Error(w, "not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "not found", nil)
 			return
 		}
 		h.access.handleAccessRules(w, r, publicationID)
 	case "authorize":
 		if h.access == nil {
-			http.Error(w, "not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "not found", nil)
 			return
 		}
 		h.access.handleAuthorize(w, r, publicationID)
 	case "access-rollback":
 		if h.access == nil {
-			http.Error(w, "not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "not found", nil)
 			return
 		}
 		h.access.handleAccessRollback(w, r, publicationID)
 	default:
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "not found", nil)
 	}
 }
 
 func (h *TargetHandler) handleUnpublishAction(w http.ResponseWriter, r *http.Request, publicationID string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	actor := r.URL.Query().Get("actor")
@@ -230,7 +230,7 @@ func (h *TargetHandler) handlePublicationByID(w http.ResponseWriter, r *http.Req
 	case http.MethodGet:
 		publication, err := h.service.GetPublication(r.Context(), publicationID)
 		if err != nil {
-			http.Error(w, "resource not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "resource not found", nil)
 			return
 		}
 		respondJSON(w, http.StatusOK, publication)
@@ -257,19 +257,19 @@ func (h *TargetHandler) handlePublicationByID(w http.ResponseWriter, r *http.Req
 		}
 		respondJSON(w, http.StatusAccepted, publication)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *TargetHandler) handleRollback(w http.ResponseWriter, r *http.Request, publicationID string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	actor := r.URL.Query().Get("actor")
 	publication, err := h.service.Rollback(r.Context(), publicationID, actor)
 	if err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", nil)
 		return
 	}
 	respondJSON(w, http.StatusOK, publication)
@@ -312,6 +312,6 @@ func (h *TargetHandler) handleValidationRuns(w http.ResponseWriter, r *http.Requ
 		}
 		respondJSON(w, http.StatusOK, runs)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }

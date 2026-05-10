@@ -10,14 +10,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type JournalStore struct {
-	path     string
-	maxBytes int64
-	mu       sync.Mutex
-	file     *os.File
+	path        string
+	maxBytes    int64
+	parseErrors int64
+	mu          sync.Mutex
+	file        *os.File
 }
 
 func NewJournalStore(path string) (*JournalStore, error) {
@@ -91,12 +93,15 @@ func (s *JournalStore) ReadAll(cap int) ([]Event, error) {
 	var events []Event
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	line := 0
 	for scanner.Scan() {
+		line++
 		var evt Event
 		if err := json.Unmarshal(scanner.Bytes(), &evt); err == nil {
 			events = append(events, evt)
 		} else {
-			log.Printf("audit journal parse failure path=%s err=%v", s.path, err)
+			atomic.AddInt64(&s.parseErrors, 1)
+			log.Printf("audit journal parse failure path=%s line=%d err=%v", s.path, line, err)
 		}
 	}
 
@@ -110,6 +115,13 @@ func (s *JournalStore) ReadAll(cap int) ([]Event, error) {
 	}
 
 	return events, nil
+}
+
+func (s *JournalStore) ParseErrors() int64 {
+	if s == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&s.parseErrors)
 }
 
 func (s *JournalStore) rotateIfNeeded(nextWriteBytes int64) error {

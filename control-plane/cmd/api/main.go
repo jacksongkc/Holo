@@ -16,7 +16,10 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.LoadE()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
 	if err := validateStartupConfig(cfg); err != nil {
 		log.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,23 @@ import (
 	"strings"
 	"testing"
 )
+
+type failingResponseWriter struct {
+	header http.Header
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *failingResponseWriter) WriteHeader(int) {}
+
+func (w *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("client disconnected")
+}
 
 func TestOpsHandler_SystemOverviewEndpoint(t *testing.T) {
 	h := NewOpsHandler(nil, nil, 3260)
@@ -98,6 +116,23 @@ func TestOpsHandler_SupportBundleEndpoint(t *testing.T) {
 	entries := zipEntries(reader)
 	if !entries["manifest.json"] || !entries["api/system-overview.json"] || !entries["env/holo-env.txt"] {
 		t.Fatalf("support bundle missing required entries: %+v", entries)
+	}
+}
+
+func TestOpsHandler_SupportBundleLogsWriteFailure(t *testing.T) {
+	h := NewOpsHandler(nil, nil, 3260)
+	h.support = testSupportConfig(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/support/bundle", nil)
+
+	var logs bytes.Buffer
+	original := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(original) })
+
+	h.handleSupportBundle(&failingResponseWriter{}, req)
+
+	if got := logs.String(); !strings.Contains(got, "support bundle response write failed") {
+		t.Fatalf("expected support bundle write failure log, got %q", got)
 	}
 }
 

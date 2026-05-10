@@ -58,3 +58,15 @@ func TestMetricsRegistry_AuditJournalFailureState(t *testing.T) {
 		t.Errorf("AuditJournalFailed after success = %v, want 0", val)
 	}
 }
+
+func TestMetricsRegistry_AuditJournalParseFailures(t *testing.T) {
+	r := NewMetricsRegistry()
+
+	r.RecordAuditJournalParseFailures(2)
+	r.RecordAuditJournalParseFailures(0)
+	r.RecordAuditJournalParseFailures(-1)
+
+	if val := atomic.LoadInt64(&r.AuditParseFailures); val != 2 {
+		t.Fatalf("AuditParseFailures = %v, want 2", val)
+	}
+}
