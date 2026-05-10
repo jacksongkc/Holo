@@ -51,6 +51,8 @@
 - [X] T017 Run `cd /Users/lei/AI_CC_Home/vtlix/data-plane && cargo test`
 - [X] T018 Run `bash /Users/lei/AI_CC_Home/vtlix/tests/integration/test_gated_scsi_e2e.sh`
 - [X] T019 Run `bash /Users/lei/AI_CC_Home/vtlix/scripts/lint-guardrails.sh`
+- [X] T020 Add `e2e-scsi` release target in `/Users/lei/AI_CC_Home/vtlix/Makefile`
+- [X] T021 Add gated GitHub Actions workflow in `/Users/lei/AI_CC_Home/vtlix/.github/workflows/e2e-scsi.yml`
 
 ## Dependencies
 
