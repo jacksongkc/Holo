@@ -63,6 +63,7 @@ func TestValidateRootPolicy(t *testing.T) {
 		{RootKindData, "/var/lib/holo"},
 		{RootKindBackstore, "/var/lib/holo/targets"},
 		{RootKindPool, t.TempDir()},
+		{RootKindStorage, filepath.Join(t.TempDir(), "storage")},
 	} {
 		if err := ValidateRoot(tc.kind, tc.root); err != nil {
 			t.Fatalf("expected %s root %q to pass: %v", tc.kind, tc.root, err)
@@ -80,6 +81,13 @@ func TestValidateRootPolicy(t *testing.T) {
 		{RootKindLog, "/var/log"},
 		{RootKindRun, "/run"},
 		{RootKindPool, "relative/path"},
+		{RootKindConfig, "/srv/random"},
+		{RootKindConfig, "/etc/holo/sub"},
+		{RootKindLog, "/var/log/holo/extra"},
+		{RootKindRun, "/run/holo/sub"},
+		{RootKindData, "/usr/bin"},
+		{RootKindBackstore, "/opt/holo"},
+		{RootKindPool, "/srv/anywhere"},
 	} {
 		if err := ValidateRoot(tc.kind, tc.root); err == nil {
 			t.Fatalf("expected %s root %q to be rejected", tc.kind, tc.root)

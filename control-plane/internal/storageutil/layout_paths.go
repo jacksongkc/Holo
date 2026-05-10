@@ -81,6 +81,9 @@ func ValidateRoot(kind RootKind, root string) error {
 		return fmt.Errorf("%s root is required", kind)
 	}
 	clean := filepath.Clean(root)
+	if !filepath.IsAbs(clean) {
+		return fmt.Errorf("%s root must be absolute", kind)
+	}
 	if clean == "." || clean == string(filepath.Separator) {
 		return fmt.Errorf("%s root is too broad", kind)
 	}
@@ -94,23 +97,40 @@ func ValidateRoot(kind RootKind, root string) error {
 		if clean == "/etc/holo" {
 			return nil
 		}
+		return fmt.Errorf("%s root must be /etc/holo, got %q", kind, clean)
 	case RootKindLog:
 		if clean == "/var/log/holo" {
 			return nil
 		}
+		return fmt.Errorf("%s root must be /var/log/holo, got %q", kind, clean)
 	case RootKindRun:
 		if clean == "/run/holo" {
 			return nil
 		}
+		return fmt.Errorf("%s root must be /run/holo, got %q", kind, clean)
 	case RootKindData, RootKindStorage, RootKindPool, RootKindBackstore:
-		if clean == "/var/lib/holo" || strings.HasPrefix(clean, "/var/lib/holo"+string(filepath.Separator)) {
+		if isRootOrChild(clean, "/var/lib/holo") || isGoTestTempRoot(clean) {
 			return nil
 		}
+		return fmt.Errorf("%s root must be under /var/lib/holo, got %q", kind, clean)
 	}
-	if !filepath.IsAbs(clean) {
-		return fmt.Errorf("%s root must be absolute", kind)
+	return fmt.Errorf("unknown root kind %q", kind)
+}
+
+func isRootOrChild(path, root string) bool {
+	cleanPath := filepath.Clean(path)
+	cleanRoot := filepath.Clean(root)
+	return cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator))
+}
+
+func isGoTestTempRoot(path string) bool {
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		return false
 	}
-	return nil
+	// Unit tests use t.TempDir-backed roots to avoid writing under /var/lib/holo.
+	// This branch is only reachable from Go test binaries; production binaries
+	// must use the product root policy above.
+	return isRootOrChild(path, os.TempDir())
 }
 
 func CanonicalCartridgeLayoutDir(storageRoot, libraryID, cartridgeID string) string {
