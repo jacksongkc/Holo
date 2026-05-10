@@ -35,6 +35,58 @@ func TestPoolStorageRoot(t *testing.T) {
 	}
 }
 
+func TestSafeJoin(t *testing.T) {
+	root := t.TempDir()
+	got, err := SafeJoin(root, filepath.Join("targets", "pub.img"))
+	if err != nil {
+		t.Fatalf("safe join valid child failed: %v", err)
+	}
+	if got != filepath.Join(root, "targets", "pub.img") {
+		t.Fatalf("unexpected safe join path %q", got)
+	}
+
+	for _, child := range []string{"/etc/passwd", "../escape", "targets/../../escape"} {
+		if _, err := SafeJoin(root, child); err == nil {
+			t.Fatalf("expected unsafe child %q to be rejected", child)
+		}
+	}
+}
+
+func TestValidateRootPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		kind RootKind
+		root string
+	}{
+		{RootKindConfig, "/etc/holo"},
+		{RootKindLog, "/var/log/holo"},
+		{RootKindRun, "/run/holo"},
+		{RootKindData, "/var/lib/holo"},
+		{RootKindBackstore, "/var/lib/holo/targets"},
+		{RootKindPool, t.TempDir()},
+	} {
+		if err := ValidateRoot(tc.kind, tc.root); err != nil {
+			t.Fatalf("expected %s root %q to pass: %v", tc.kind, tc.root, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		kind RootKind
+		root string
+	}{
+		{RootKindData, ""},
+		{RootKindData, "/"},
+		{RootKindConfig, "/etc"},
+		{RootKindData, "/var/lib"},
+		{RootKindLog, "/var/log"},
+		{RootKindRun, "/run"},
+		{RootKindPool, "relative/path"},
+	} {
+		if err := ValidateRoot(tc.kind, tc.root); err == nil {
+			t.Fatalf("expected %s root %q to be rejected", tc.kind, tc.root)
+		}
+	}
+}
+
 func TestLegacyCartridgeLayoutDirs(t *testing.T) {
 	root := t.TempDir()
 	legacyKeep := filepath.Join(root, "drive-a", "vta000l06")

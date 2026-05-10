@@ -52,6 +52,10 @@ func PrometheusText(registry *metrics.MetricsRegistry) string {
 	fmt.Fprintf(&buf, "# TYPE holo_audit_journal_failed gauge\n")
 	fmt.Fprintf(&buf, "holo_audit_journal_failed %d\n", atomic.LoadInt64(&registry.AuditJournalFailed))
 
+	fmt.Fprintf(&buf, "# HELP holo_audit_journal_parse_errors_total Total malformed audit journal rows skipped during replay\n")
+	fmt.Fprintf(&buf, "# TYPE holo_audit_journal_parse_errors_total counter\n")
+	fmt.Fprintf(&buf, "holo_audit_journal_parse_errors_total %d\n", atomic.LoadInt64(&registry.AuditParseFailures))
+
 	fmt.Fprintf(&buf, "# HELP holo_scsi_sense_errors_total Total SCSI CHECK CONDITION sense errors\n")
 	fmt.Fprintf(&buf, "# TYPE holo_scsi_sense_errors_total counter\n")
 	fmt.Fprintf(&buf, "holo_scsi_sense_errors_total %d\n", atomic.LoadInt64(&registry.ScsiSenseErrors))

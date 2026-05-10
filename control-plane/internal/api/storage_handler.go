@@ -43,7 +43,7 @@ type manageStorageDiskRequest struct {
 
 func (h *StorageHandler) handleDisksDiscovery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	disks, err := h.svc.DiscoverDisks(r.Context())
@@ -76,20 +76,20 @@ func (h *StorageHandler) handlePools(w http.ResponseWriter, r *http.Request) {
 		}
 		respondJSON(w, http.StatusCreated, pool)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *StorageHandler) handlePoolSubresource(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/storage/pools/"), "/")
 	if path == "" {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", nil)
 		return
 	}
 	parts := strings.Split(path, "/")
 	poolID := strings.TrimSpace(parts[0])
 	if poolID == "" {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", nil)
 		return
 	}
 
@@ -103,13 +103,13 @@ func (h *StorageHandler) handlePoolSubresource(w http.ResponseWriter, r *http.Re
 	case len(parts) == 3 && parts[1] == "disks" && (parts[2] == "attach" || parts[2] == "detach"):
 		h.handlePoolDiskManagement(w, r, poolID, parts[2])
 	default:
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "not found", nil)
 	}
 }
 
 func (h *StorageHandler) handlePoolDeleteAction(w http.ResponseWriter, r *http.Request, poolID string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
@@ -137,13 +137,13 @@ func (h *StorageHandler) handlePoolByID(w http.ResponseWriter, r *http.Request, 
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *StorageHandler) handlePoolCapacity(w http.ResponseWriter, r *http.Request, poolID string) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	snapshot, err := h.svc.GetCapacity(r.Context(), poolID)
@@ -156,7 +156,7 @@ func (h *StorageHandler) handlePoolCapacity(w http.ResponseWriter, r *http.Reque
 
 func (h *StorageHandler) handlePoolDiskManagement(w http.ResponseWriter, r *http.Request, poolID, action string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	var req manageStorageDiskRequest

@@ -528,7 +528,14 @@ func TestLIOShellAdapterPublishUnpublishCommands(t *testing.T) {
 	}
 
 	backstoreName := runtimeBackstoreName(pub)
-	backstorePath := runtimeBackstorePath(lioBackstoreDir(adapter.cfg, pub), backstoreName)
+	resolvedBackstoreDir, err := lioBackstoreDir(adapter.cfg, pub)
+	if err != nil {
+		t.Fatalf("backstore dir: %v", err)
+	}
+	backstorePath, err := runtimeBackstorePath(resolvedBackstoreDir, backstoreName)
+	if err != nil {
+		t.Fatalf("backstore path: %v", err)
+	}
 	if _, err := os.Stat(backstorePath); err != nil {
 		t.Fatalf("expected backstore image created, err=%v", err)
 	}
@@ -577,6 +584,60 @@ func TestLIOShellAdapterPublishFailureCleansBackstore(t *testing.T) {
 	joined := flattenCalls(runner.calls)
 	if !strings.Contains(joined, "/backstores/fileio delete") {
 		t.Fatalf("expected backstore cleanup after publish failure, got calls=%s", joined)
+	}
+}
+
+func TestLIOShellAdapterRejectsUnsafeRuntimeInputs(t *testing.T) {
+	runner := &fakeCommandRunner{}
+	adapter := newLIOShellTargetRuntimeAdapter(TargetRuntimeConfig{
+		Mode:            "lio-shell",
+		BackstoreDir:    t.TempDir(),
+		BackstoreSizeMB: 8,
+		UseSudo:         false,
+	}, runner)
+
+	pub, err := domain.NewTargetPublication("pub-unsafe", "pool-1", "lib-1", "drive-1", "car-1", "iqn.2026-04.ai.holo:safe")
+	if err != nil {
+		t.Fatalf("new publication: %v", err)
+	}
+	pub.TargetIQN = "iqn.2026-04.ai.holo:bad\nvalue"
+
+	if _, err := adapter.Publish(context.Background(), pub); err != domain.ErrInvalidInput {
+		t.Fatalf("expected invalid input for malformed target IQN, got %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no targetcli calls for invalid publication, got %v", runner.calls)
+	}
+
+	if err := adapter.runTargetcli(context.Background(), "/iscsi", "create", "iqn.2026-04.ai.holo:bad\nvalue"); err != domain.ErrInvalidInput {
+		t.Fatalf("expected invalid input for unsafe targetcli arg, got %v", err)
+	}
+	if err := adapter.runTargetcli(context.Background(), "/iscsi/../backstores", "ls"); err != domain.ErrInvalidInput {
+		t.Fatalf("expected invalid input for targetcli path traversal, got %v", err)
+	}
+}
+
+func TestLIOShellBackstorePathValidationPreservesValidPublication(t *testing.T) {
+	poolRootBase := t.TempDir()
+	t.Setenv("HOLO_STORAGE_POOL_ROOT_BASE", poolRootBase)
+	pub, err := domain.NewTargetPublication("pub-valid", "Pool-A", "lib-1", "drive-1", "car-1", "iqn.2026-04.ai.holo:valid")
+	if err != nil {
+		t.Fatalf("new publication: %v", err)
+	}
+
+	backstoreDir, err := lioBackstoreDir(TargetRuntimeConfig{BackstoreDir: t.TempDir()}, pub)
+	if err != nil {
+		t.Fatalf("valid pool backstore dir rejected: %v", err)
+	}
+	if !strings.HasPrefix(backstoreDir, poolRootBase) {
+		t.Fatalf("expected pool backstore dir under %q, got %q", poolRootBase, backstoreDir)
+	}
+	backstorePath, err := runtimeBackstorePath(backstoreDir, runtimeBackstoreName(pub))
+	if err != nil {
+		t.Fatalf("valid backstore path rejected: %v", err)
+	}
+	if !strings.HasSuffix(backstorePath, ".img") {
+		t.Fatalf("expected image path suffix, got %q", backstorePath)
 	}
 }
 

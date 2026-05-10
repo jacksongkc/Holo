@@ -2,9 +2,21 @@ package audit
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Holo-VTL/Holo/control-plane/internal/metrics"
 )
+
+type failingJournalAppender struct {
+	err error
+}
+
+func (a failingJournalAppender) Append(Event) error {
+	return a.err
+}
 
 func TestMemoryWriterCapsWithFreshBackingArray(t *testing.T) {
 	w := NewMemoryWriter()
@@ -33,5 +45,36 @@ func TestMemoryWriterCapsWithFreshBackingArray(t *testing.T) {
 	}
 	if got := events[len(events)-1].OccurredAt.Unix(); got != 10000 {
 		t.Fatalf("expected newest retained event timestamp 10000, got %d", got)
+	}
+}
+
+func TestPersistentWriterDoesNotWriteMemoryWhenJournalAppendFails(t *testing.T) {
+	appendErr := errors.New("append failed")
+	mem := NewMemoryWriter()
+	registry := metrics.NewMetricsRegistry()
+	writer := &PersistentWriter{
+		MemoryStore: mem,
+		Journal:     failingJournalAppender{err: appendErr},
+		Metrics:     registry,
+	}
+
+	err := writer.Write(context.Background(), Event{
+		EventID:    "event",
+		Actor:      "test",
+		Action:     "write",
+		ObjectType: "unit",
+		ObjectID:   "id",
+		Result:     "success",
+		OccurredAt: time.Now().UTC(),
+	})
+
+	if !errors.Is(err, appendErr) {
+		t.Fatalf("expected append error, got %v", err)
+	}
+	if got := len(mem.Events()); got != 0 {
+		t.Fatalf("expected memory writer to remain empty, got %d events", got)
+	}
+	if got := atomic.LoadInt64(&registry.AuditWriteFailures); got != 1 {
+		t.Fatalf("expected one audit write failure metric, got %d", got)
 	}
 }

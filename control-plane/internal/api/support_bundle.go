@@ -67,14 +67,14 @@ func DefaultSupportBundleConfig() SupportBundleConfig {
 
 func (h *OpsHandler) handleSupportBundle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 
 	bundle, filename, err := h.buildSupportBundle(r.Context())
 	if err != nil {
 		log.Printf("support bundle generation failed: %v", err)
-		http.Error(w, "support bundle unavailable", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "support bundle unavailable", nil)
 		return
 	}
 
@@ -82,7 +82,9 @@ func (h *OpsHandler) handleSupportBundle(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(bundle)))
-	_, _ = w.Write(bundle)
+	if _, err := w.Write(bundle); err != nil {
+		log.Printf("support bundle response write failed: %v", err)
+	}
 }
 
 func (h *OpsHandler) buildSupportBundle(ctx context.Context) ([]byte, string, error) {

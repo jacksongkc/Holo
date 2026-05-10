@@ -35,7 +35,7 @@ func NewPolicyHandler(accessRepo accessPolicyRepo, retentionRepo retentionPolicy
 
 func (h *PolicyHandler) handleCreateAccessPolicy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	var req domain.TargetAccessPolicy
@@ -60,7 +60,7 @@ func (h *PolicyHandler) handleCreateAccessPolicy(w http.ResponseWriter, r *http.
 
 func (h *PolicyHandler) handleCreateRetentionPolicy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	var req domain.RetentionPolicy

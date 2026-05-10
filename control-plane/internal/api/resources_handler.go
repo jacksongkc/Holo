@@ -192,20 +192,20 @@ func (h *ResourcesHandler) handleLibraries(w http.ResponseWriter, r *http.Reques
 	case http.MethodGet:
 		respondJSON(w, http.StatusOK, h.repo.ListLibraries(r.Context()))
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *ResourcesHandler) handleLibraryByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/libraries/"), "/")
 	if path == "" {
-		http.Error(w, domain.ErrInvalidInput.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", domain.ErrInvalidInput)
 		return
 	}
 	parts := strings.Split(path, "/")
 	libraryID := strings.TrimSpace(parts[0])
 	if libraryID == "" {
-		http.Error(w, domain.ErrInvalidInput.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", domain.ErrInvalidInput)
 		return
 	}
 
@@ -225,14 +225,14 @@ func (h *ResourcesHandler) handleLibraryByID(w http.ResponseWriter, r *http.Requ
 			}
 			w.WriteHeader(http.StatusNoContent)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		}
 		return
 	}
 
 	if len(parts) == 2 && parts[1] == "delete" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		if err := h.deleteLibraryCascade(r.Context(), libraryID); err != nil {
@@ -243,7 +243,7 @@ func (h *ResourcesHandler) handleLibraryByID(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	http.Error(w, "not found", http.StatusNotFound)
+	respondError(w, http.StatusNotFound, "not found", nil)
 }
 
 func (h *ResourcesHandler) handleDrives(w http.ResponseWriter, r *http.Request) {
@@ -295,20 +295,20 @@ func (h *ResourcesHandler) handleDrives(w http.ResponseWriter, r *http.Request) 
 		}
 		respondJSON(w, http.StatusOK, h.repo.ListDrives(r.Context()))
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *ResourcesHandler) handleDriveByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/drives/"), "/")
 	if path == "" {
-		http.Error(w, domain.ErrInvalidInput.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", domain.ErrInvalidInput)
 		return
 	}
 	parts := strings.Split(path, "/")
 	driveID := strings.TrimSpace(parts[0])
 	if driveID == "" {
-		http.Error(w, domain.ErrInvalidInput.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", domain.ErrInvalidInput)
 		return
 	}
 
@@ -364,14 +364,14 @@ func (h *ResourcesHandler) handleDriveByID(w http.ResponseWriter, r *http.Reques
 		case http.MethodDelete:
 			deleteDrive()
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		}
 		return
 	}
 
 	if len(parts) == 2 && parts[1] == "delete" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		deleteDrive()
@@ -380,7 +380,7 @@ func (h *ResourcesHandler) handleDriveByID(w http.ResponseWriter, r *http.Reques
 
 	if len(parts) == 2 && parts[1] == "load" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		var req loadDriveRequest
@@ -399,7 +399,7 @@ func (h *ResourcesHandler) handleDriveByID(w http.ResponseWriter, r *http.Reques
 
 	if len(parts) == 2 && parts[1] == "unload" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		var req resourceActorRequest
@@ -416,7 +416,7 @@ func (h *ResourcesHandler) handleDriveByID(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	http.Error(w, "not found", http.StatusNotFound)
+	respondError(w, http.StatusNotFound, "not found", nil)
 }
 
 func (h *ResourcesHandler) handleCartridges(w http.ResponseWriter, r *http.Request) {
@@ -485,20 +485,20 @@ func (h *ResourcesHandler) handleCartridges(w http.ResponseWriter, r *http.Reque
 		}
 		respondJSON(w, http.StatusOK, h.repo.ListCartridges(r.Context()))
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *ResourcesHandler) handleCartridgeByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/cartridges/"), "/")
 	if path == "" {
-		http.Error(w, domain.ErrInvalidInput.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", domain.ErrInvalidInput)
 		return
 	}
 	parts := strings.Split(path, "/")
 	cartridgeID := strings.TrimSpace(parts[0])
 	if cartridgeID == "" {
-		http.Error(w, domain.ErrInvalidInput.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "invalid request", domain.ErrInvalidInput)
 		return
 	}
 
@@ -562,14 +562,14 @@ func (h *ResourcesHandler) handleCartridgeByID(w http.ResponseWriter, r *http.Re
 		case http.MethodDelete:
 			deleteCartridge("web-console")
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		}
 		return
 	}
 
 	if len(parts) == 2 && parts[1] == "delete" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		var req resourceActorRequest
@@ -583,7 +583,7 @@ func (h *ResourcesHandler) handleCartridgeByID(w http.ResponseWriter, r *http.Re
 
 	if len(parts) == 2 && parts[1] == "erase" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		var req eraseCartridgeRequest
@@ -602,7 +602,7 @@ func (h *ResourcesHandler) handleCartridgeByID(w http.ResponseWriter, r *http.Re
 
 	if len(parts) == 2 && parts[1] == "export" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		var req resourceActorRequest
@@ -621,7 +621,7 @@ func (h *ResourcesHandler) handleCartridgeByID(w http.ResponseWriter, r *http.Re
 
 	if len(parts) == 2 && parts[1] == "import" {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 			return
 		}
 		var req resourceActorRequest
@@ -638,12 +638,12 @@ func (h *ResourcesHandler) handleCartridgeByID(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	http.Error(w, "not found", http.StatusNotFound)
+	respondError(w, http.StatusNotFound, "not found", nil)
 }
 
 func (h *ResourcesHandler) handleCreateChain(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	var req resourceChainRequest
