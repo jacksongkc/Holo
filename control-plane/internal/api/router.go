@@ -138,7 +138,7 @@ func NewServerWithConfigE(cfg config.Config) (*Server, error) {
 		mux:        http.NewServeMux(),
 		uiDistDir:  strings.TrimSpace(cfg.WebUIDistDir),
 		resources:  resourcesHandler,
-		storage:    NewStorageHandler(storageSvc),
+		storage:    NewStorageHandler(storageSvc, resourcesHandler),
 		policy:     NewPolicyHandler(accessPolicyRepo, retentionPolicyRepo),
 		ops:        NewOpsHandler(health, query, cfg.TargetPortalPort, registry),
 		access:     accessHandler,
