@@ -23,8 +23,9 @@ use super::map_lookup::{
     rebuild_lookup_from_blk_map, sync_lookup, MapLookupRecord,
 };
 use super::metadata::{
-    load_checkpoint_page, lock_storage_mutex, modified_nanos_from_result, persist_checkpoint_page,
-    quarantine_invalid_metadata, CheckpointFlags, MetadataCheckpoint, StorageError,
+    checked_usize_from_u64, load_checkpoint_page, lock_storage_mutex, modified_nanos_from_result,
+    persist_checkpoint_page, quarantine_invalid_metadata, CheckpointFlags, MetadataCheckpoint,
+    StorageError,
 };
 use super::reclaim::{refresh_reclaim_safety, upsert_reclaim_candidates, ReclaimReason};
 use super::segment::{
@@ -737,15 +738,17 @@ pub fn read_logical_block(
     };
 
     let blob = load_blob_by_location(paths, record.physical_segment_id, record.physical_offset)?;
+    let logical_len =
+        checked_usize_from_u64(u64::from(record.logical_len), "logical payload length")?;
     let payload = if record.compression == CompressionCodec::None {
-        if blob.bytes.len() != record.logical_len as usize {
+        if blob.bytes.len() != logical_len {
             return Err(StorageError::Corrupt(
                 "raw payload length mismatch".to_string(),
             ));
         }
         blob.bytes
     } else {
-        decompress_payload(record.compression, &blob.bytes, record.logical_len as usize)?
+        decompress_payload(record.compression, &blob.bytes, logical_len)?
     };
 
     if record.payload_checksum != 0 && checksum32(&payload) != record.payload_checksum {
@@ -1089,7 +1092,8 @@ fn dedup_entry_matches_payload(
     entry: &DedupIndexEntry,
     payload: &[u8],
 ) -> Result<bool, StorageError> {
-    if entry.logical_len as usize != payload.len() {
+    let logical_len = checked_usize_from_u64(u64::from(entry.logical_len), "dedup logical length")?;
+    if logical_len != payload.len() {
         return Ok(false);
     }
     let physical_segment_id = locate_blob_segment_id(paths, entry.stored_blob_id)?;
@@ -1100,7 +1104,9 @@ fn dedup_entry_matches_payload(
     let candidate = if blob.codec == CompressionCodec::None {
         blob.bytes
     } else {
-        decompress_payload(blob.codec, &blob.bytes, blob.logical_len as usize)?
+        let blob_logical_len =
+            checked_usize_from_u64(u64::from(blob.logical_len), "data blob logical length")?;
+        decompress_payload(blob.codec, &blob.bytes, blob_logical_len)?
     };
     Ok(candidate == payload)
 }
@@ -1111,7 +1117,12 @@ fn should_verify_dedup_hit(entry: &DedupIndexEntry) -> bool {
     }
     std::env::var("HOLO_TAPE_DEDUP_VERIFY_HITS")
         .ok()
-        .map(|raw| !matches!(raw.trim().to_ascii_lowercase().as_str(), "0" | "false" | "no"))
+        .map(|raw| {
+            !matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "no"
+            )
+        })
         .unwrap_or(true)
 }
 
@@ -1140,22 +1151,17 @@ fn load_blob_by_id(path: &Path, blob_id: u64) -> Result<DataBlob, StorageError> 
             .cloned()
             .ok_or_else(|| StorageError::NotFound("data reader not initialized".to_string()))?
     };
-    let bytes =
-        match read_blob_payload(file.as_ref(), meta.payload_offset, meta.stored_len as usize) {
-            Ok(bytes) => bytes,
-            Err(StorageError::Io(err)) if err.kind() == ErrorKind::UnexpectedEof => {
-                let reopened = Arc::new(File::open(path)?);
-                let bytes = read_blob_payload(
-                    reopened.as_ref(),
-                    meta.payload_offset,
-                    meta.stored_len as usize,
-                )?;
-                lock_storage_mutex(data_readers(), "data reader")?
-                    .insert(path.to_path_buf(), reopened);
-                bytes
-            }
-            Err(err) => return Err(err),
-        };
+    let stored_len = checked_usize_from_u64(u64::from(meta.stored_len), "data blob stored length")?;
+    let bytes = match read_blob_payload(file.as_ref(), meta.payload_offset, stored_len) {
+        Ok(bytes) => bytes,
+        Err(StorageError::Io(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+            let reopened = Arc::new(File::open(path)?);
+            let bytes = read_blob_payload(reopened.as_ref(), meta.payload_offset, stored_len)?;
+            lock_storage_mutex(data_readers(), "data reader")?.insert(path.to_path_buf(), reopened);
+            bytes
+        }
+        Err(err) => return Err(err),
+    };
     if meta.v2_integrity
         && meta.payload_checksum != blob_integrity_checksum(meta.blob_id, meta.logical_len, &bytes)
     {
@@ -1451,7 +1457,9 @@ fn persist_data_blobs_as_log(path: &Path, blobs: &[DataBlobMeta]) -> Result<(), 
     payload.extend_from_slice(DATA_LOG_PREFIX);
     let mut file = File::open(path)?;
     for blob in blobs {
-        let mut bytes = vec![0u8; blob.stored_len as usize];
+        let stored_len =
+            checked_usize_from_u64(u64::from(blob.stored_len), "data blob stored length")?;
+        let mut bytes = vec![0u8; stored_len];
         file.seek(SeekFrom::Start(blob.payload_offset))?;
         file.read_exact(&mut bytes)?;
         let payload_checksum = blob_integrity_checksum(blob.blob_id, blob.logical_len, &bytes);
