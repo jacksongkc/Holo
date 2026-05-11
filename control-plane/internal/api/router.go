@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -341,7 +342,10 @@ func (s *Server) handleUIAssets(w http.ResponseWriter, r *http.Request) {
 	}
 	distInfo, err := os.Stat(distDir)
 	if err != nil || !distInfo.IsDir() {
-		respondError(w, http.StatusServiceUnavailable, "ui dist directory is unavailable", nil)
+		if err == nil {
+			err = errors.New("ui dist path is not a directory")
+		}
+		respondError(w, http.StatusServiceUnavailable, "ui dist directory is unavailable", err)
 		return
 	}
 
