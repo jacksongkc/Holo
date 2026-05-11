@@ -175,6 +175,7 @@ mod tests {
         let path = root.join(FILEMARKS_STATE_FILE);
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&path)
             .expect("create oversized file");

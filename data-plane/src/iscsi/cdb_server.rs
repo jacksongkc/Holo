@@ -984,13 +984,11 @@ pub(crate) fn write_shared_changer_vault(
     fs::create_dir_all(&dir)?;
     let tmp = path.with_extension("vault.tmp");
     let mut payload = String::new();
-    for label in labels {
-        if let Some(label) = label {
-            let trimmed = label.trim();
-            if !trimmed.is_empty() {
-                payload.push_str(trimmed);
-                payload.push('\n');
-            }
+    for label in labels.iter().flatten() {
+        let trimmed = label.trim();
+        if !trimmed.is_empty() {
+            payload.push_str(trimmed);
+            payload.push('\n');
         }
     }
     fs::write(&tmp, payload)?;

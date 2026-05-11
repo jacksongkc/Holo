@@ -215,7 +215,7 @@ fn rle_encode(payload: &[u8]) -> Vec<u8> {
 }
 
 fn rle_decode(payload: &[u8]) -> Result<Vec<u8>, StorageError> {
-    if payload.len() % 2 != 0 {
+    if !payload.len().is_multiple_of(2) {
         return Err(StorageError::Corrupt("rle payload malformed".to_string()));
     }
 

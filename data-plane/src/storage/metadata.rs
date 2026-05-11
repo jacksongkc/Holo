@@ -208,6 +208,7 @@ pub struct FlushReport {
     pub steps: Vec<FlushStep>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn flush_chain(
     data_path: &Path,
     blk_map_path: &Path,

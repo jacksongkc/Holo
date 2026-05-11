@@ -842,7 +842,7 @@ func respondResourceError(w http.ResponseWriter, err error) {
 		respondError(w, status, message, err)
 		return
 	}
-	respondError(w, status, message, nil)
+	respondError(w, status, message, err)
 }
 
 func nonEmpty(value, fallback string) string {

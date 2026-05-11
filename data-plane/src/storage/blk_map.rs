@@ -481,7 +481,7 @@ fn decode_legacy_payload(payload: &[u8]) -> Result<Vec<BlkMapRecord>, StorageErr
         return Ok(records);
     }
     let remaining = payload.len() - offset;
-    if remaining % count != 0 {
+    if !remaining.is_multiple_of(count) {
         return Err(StorageError::Corrupt(
             "blk map record size mismatch".to_string(),
         ));

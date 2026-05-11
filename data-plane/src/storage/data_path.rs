@@ -704,9 +704,7 @@ fn is_indexed_data_segment_name(name: &OsStr) -> bool {
 }
 
 fn indexed_data_segment_seq(name: &OsStr) -> Option<u32> {
-    let Some(name) = name.to_str() else {
-        return None;
-    };
+    let name = name.to_str()?;
     const PREFIX: &str = "data_";
     const SUFFIX: &str = ".seg";
     if !name.starts_with(PREFIX) || !name.ends_with(SUFFIX) {

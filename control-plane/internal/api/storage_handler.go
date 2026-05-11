@@ -206,5 +206,5 @@ func respondStorageError(w http.ResponseWriter, err error) {
 		respondError(w, status, message, err)
 		return
 	}
-	respondError(w, status, message, nil)
+	respondError(w, status, message, err)
 }
