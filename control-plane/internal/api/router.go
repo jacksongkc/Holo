@@ -171,7 +171,19 @@ func NewServerWithConfigE(cfg config.Config) (*Server, error) {
 }
 
 func (s *Server) Router() http.Handler {
-	return tracing.TraceMiddleware(s.securityHeadersMiddleware(s.rateLimitMiddleware(s.authMiddleware(s.mux))))
+	return tracing.TraceMiddleware(s.metricsMiddleware(s.securityHeadersMiddleware(s.rateLimitMiddleware(s.authMiddleware(s.mux)))))
+}
+
+func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.metricsHD == nil || s.metricsHD.registry == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		s.metricsHD.registry.RecordAPIRequestDuration(time.Since(start))
+	})
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {

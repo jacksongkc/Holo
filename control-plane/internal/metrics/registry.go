@@ -3,7 +3,10 @@ package metrics
 import (
 	"math"
 	"sync/atomic"
+	"time"
 )
+
+var APIRequestDurationBucketMicros = [...]uint64{5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000, 5_000_000, 10_000_000}
 
 type MetricsRegistry struct {
 	PublicationsActive int64
@@ -16,6 +19,10 @@ type MetricsRegistry struct {
 	DedupHitsTotal     int64
 	CompressionRatio   uint64 // stored as float64 bits
 	HealthStatus       int64
+
+	APIRequestDurationBuckets [len(APIRequestDurationBucketMicros)]uint64
+	APIRequestDurationCount   uint64
+	APIRequestDurationSumUsec uint64
 }
 
 func NewMetricsRegistry() *MetricsRegistry {
@@ -90,4 +97,19 @@ func (r *MetricsRegistry) SetAuditEventsTotal(total int64) {
 		total = 0
 	}
 	atomic.StoreInt64(&r.AuditEventsTotal, total)
+}
+
+func (r *MetricsRegistry) RecordAPIRequestDuration(duration time.Duration) {
+	if duration < 0 {
+		duration = 0
+	}
+	usec := uint64(duration / time.Microsecond)
+	atomic.AddUint64(&r.APIRequestDurationCount, 1)
+	atomic.AddUint64(&r.APIRequestDurationSumUsec, usec)
+	for i, upper := range APIRequestDurationBucketMicros {
+		if usec <= upper {
+			atomic.AddUint64(&r.APIRequestDurationBuckets[i], 1)
+			return
+		}
+	}
 }

@@ -72,5 +72,17 @@ func PrometheusText(registry *metrics.MetricsRegistry) string {
 	fmt.Fprintf(&buf, "# TYPE holo_health_status gauge\n")
 	fmt.Fprintf(&buf, "holo_health_status %d\n", atomic.LoadInt64(&registry.HealthStatus))
 
+	fmt.Fprintf(&buf, "# HELP holo_api_request_duration_seconds HTTP API request duration in seconds\n")
+	fmt.Fprintf(&buf, "# TYPE holo_api_request_duration_seconds histogram\n")
+	var cumulative uint64
+	for i, upper := range metrics.APIRequestDurationBucketMicros {
+		cumulative += atomic.LoadUint64(&registry.APIRequestDurationBuckets[i])
+		fmt.Fprintf(&buf, "holo_api_request_duration_seconds_bucket{le=\"%.3f\"} %d\n", float64(upper)/1_000_000, cumulative)
+	}
+	count := atomic.LoadUint64(&registry.APIRequestDurationCount)
+	fmt.Fprintf(&buf, "holo_api_request_duration_seconds_bucket{le=\"+Inf\"} %d\n", count)
+	fmt.Fprintf(&buf, "holo_api_request_duration_seconds_sum %.6f\n", float64(atomic.LoadUint64(&registry.APIRequestDurationSumUsec))/1_000_000)
+	fmt.Fprintf(&buf, "holo_api_request_duration_seconds_count %d\n", count)
+
 	return buf.String()
 }
