@@ -41,6 +41,7 @@ Thumbs.db
 # project internal docs
 specs/
 docs/
+.github/
 VeeamLogs/
 
 # Codex and Claude files
