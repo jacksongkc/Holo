@@ -88,6 +88,9 @@ pub fn dispatch_raw_cdb_with_context(
     data_out: &[u8],
     context: CdbDispatchContext,
 ) -> CdbResponse {
+    let started_at = Instant::now();
+    let opcode = cdb.first().copied().unwrap_or(0);
+    let data_out_len = data_out.len();
     if let Some(initiator) = context
         .initiator
         .as_deref()
@@ -97,9 +100,43 @@ pub fn dispatch_raw_cdb_with_context(
         let default_queue = state.take_nexus_unit_attention(initiator);
         let response = dispatch_raw_cdb_with_context_inner(state, cdb, data_out, &context);
         state.restore_nexus_unit_attention(initiator, default_queue);
+        log_slow_cdb_dispatch(started_at, opcode, data_out_len, &response);
         return response;
     }
-    dispatch_raw_cdb_with_context_inner(state, cdb, data_out, &context)
+    let response = dispatch_raw_cdb_with_context_inner(state, cdb, data_out, &context);
+    log_slow_cdb_dispatch(started_at, opcode, data_out_len, &response);
+    response
+}
+
+fn log_slow_cdb_dispatch(
+    started_at: Instant,
+    opcode: u8,
+    data_out_len: usize,
+    response: &CdbResponse,
+) {
+    let elapsed = started_at.elapsed();
+    if elapsed >= slow_cdb_dispatch_threshold() {
+        eprintln!(
+            "[slow_cdb_dispatch] opcode=0x{opcode:02X} status=0x{status:02X} elapsed_ms={} data_out_len={} data_in_len={} sense_len={}",
+            elapsed.as_millis(),
+            data_out_len,
+            response.reply.len(),
+            response.sense.len(),
+            status = response.status,
+        );
+    }
+}
+
+fn slow_cdb_dispatch_threshold() -> Duration {
+    static THRESHOLD: OnceLock<Duration> = OnceLock::new();
+    *THRESHOLD.get_or_init(|| {
+        let millis = env::var("HOLO_SLOW_CDB_DISPATCH_MS")
+            .ok()
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(1000);
+        Duration::from_millis(millis)
+    })
 }
 
 fn dispatch_raw_cdb_with_context_inner(
