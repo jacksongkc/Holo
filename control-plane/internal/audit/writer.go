@@ -25,6 +25,10 @@ type Writer interface {
 	Write(ctx context.Context, event Event) error
 }
 
+type journalAppender interface {
+	Append(Event) error
+}
+
 type MemoryWriter struct {
 	mu     sync.RWMutex
 	events []Event
@@ -64,14 +68,18 @@ func (w *MemoryWriter) Events() []Event {
 // and increments the metrics registry on each event.
 type PersistentWriter struct {
 	MemoryStore *MemoryWriter
-	Journal     *JournalStore
+	Journal     journalAppender
 	Metrics     *metrics.MetricsRegistry
 }
 
 func NewPersistentWriter(mem *MemoryWriter, journal *JournalStore, m *metrics.MetricsRegistry) *PersistentWriter {
+	var appender journalAppender
+	if journal != nil {
+		appender = journal
+	}
 	return &PersistentWriter{
 		MemoryStore: mem,
-		Journal:     journal,
+		Journal:     appender,
 		Metrics:     m,
 	}
 }

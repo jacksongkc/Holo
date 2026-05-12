@@ -617,7 +617,10 @@ func (a *TcmuAdapter) buildBackstorePlan(ctx context.Context, backstoreName, soc
 
 	fallback := fallbackTcmuSubtype()
 	if fallback != "" && containsString(available, fallback) {
-		backstorePath := runtimeBackstorePath(a.cfg.BackstoreDir, backstoreName)
+		backstorePath, err := runtimeBackstorePath(a.cfg.BackstoreDir, backstoreName)
+		if err != nil {
+			return tcmuBackstorePlan{}, err
+		}
 		if err := ensureBackstoreImage(backstorePath, a.cfg.BackstoreSizeMB); err != nil {
 			return tcmuBackstorePlan{}, err
 		}

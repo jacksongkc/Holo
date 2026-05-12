@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ERROR: ripgrep (rg) is required" >&2
+  exit 2
+fi
+
 fail=0
 
 fail_block() {
@@ -43,7 +48,14 @@ else
   pass_line "No raw err.Error() leakage in API handlers"
 fi
 
-# 4) No silent audit write drops in production code
+# 4) No naked handler-level http.Error outside the shared helper
+if rg -n 'http\.Error\(' control-plane/internal/api --glob '*.go' --glob '!**/*_test.go' --glob '!**/helpers.go' >/dev/null; then
+  fail_block "Use respondError instead of handler-level http.Error" rg -n 'http\.Error\(' control-plane/internal/api --glob '*.go' --glob '!**/*_test.go' --glob '!**/helpers.go'
+else
+  pass_line "No naked handler-level http.Error outside shared helper"
+fi
+
+# 5) No silent audit write drops in production code
 if rg -n '_ = .*\b(writer|auditW|auditWriter|memW|h\.writer)\.Write\(' control-plane/internal --glob '*.go' --glob '!**/*_test.go' >/dev/null; then
   fail_block "Do not silently drop audit write errors" rg -n '_ = .*\b(writer|auditW|auditWriter|memW|h\.writer)\.Write\(' control-plane/internal --glob '*.go' --glob '!**/*_test.go'
 else

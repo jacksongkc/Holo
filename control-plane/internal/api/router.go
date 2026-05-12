@@ -86,6 +86,7 @@ func NewServerWithConfigE(cfg config.Config) (*Server, error) {
 					tracing.LogError(context.Background(), "audit", "replay audit event failed", writeErr)
 				}
 			}
+			registry.RecordAuditJournalParseFailures(journal.ParseErrors())
 			registry.SetAuditEventsTotal(int64(len(events)))
 		}
 	}
@@ -247,7 +248,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		if subtle.ConstantTimeCompare([]byte(token), []byte(s.apiKey)) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 
@@ -265,7 +266,7 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 			allowed, retryAfter := s.limiter.allow(s.limiter.clientIDFromRequest(r), r.URL.Path, time.Now())
 			if !allowed {
 				w.Header().Set("Retry-After", retryAfterSeconds(retryAfter))
-				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				respondError(w, http.StatusTooManyRequests, "rate limit exceeded", nil)
 				return
 			}
 		}
@@ -317,23 +318,23 @@ func (s *Server) handleUIRoot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUIAssets(w http.ResponseWriter, r *http.Request) {
 	if !isUIRoute(r) {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "not found", nil)
 		return
 	}
 	distDir := strings.TrimSpace(s.uiDistDir)
 	if distDir == "" {
-		http.Error(w, "ui dist path is not configured", http.StatusServiceUnavailable)
+		respondError(w, http.StatusServiceUnavailable, "ui dist path is not configured", nil)
 		return
 	}
 	distInfo, err := os.Stat(distDir)
 	if err != nil || !distInfo.IsDir() {
-		http.Error(w, "ui dist directory is unavailable", http.StatusServiceUnavailable)
+		respondError(w, http.StatusServiceUnavailable, "ui dist directory is unavailable", nil)
 		return
 	}
 
 	cleaned, ok := normalizedEscapedPath(r)
 	if !ok || (cleaned != "/ui" && !strings.HasPrefix(cleaned, "/ui/")) {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "not found", nil)
 		return
 	}
 	relative := strings.TrimPrefix(cleaned, "/ui/")
@@ -344,7 +345,7 @@ func (s *Server) handleUIAssets(w http.ResponseWriter, r *http.Request) {
 
 	candidate := filepath.Clean(filepath.Join(distDir, relative))
 	if !pathWithinBase(filepath.Clean(distDir), candidate) {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "not found", nil)
 		return
 	}
 	if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {

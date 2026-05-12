@@ -78,13 +78,13 @@ func (h *TargetAccessHandler) handleAccessRules(w http.ResponseWriter, r *http.R
 		}
 		respondJSON(w, http.StatusOK, snapshot)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
 func (h *TargetAccessHandler) handleAuthorize(w http.ResponseWriter, r *http.Request, publicationID string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	var req authorizeRequest
@@ -102,7 +102,7 @@ func (h *TargetAccessHandler) handleAuthorize(w http.ResponseWriter, r *http.Req
 
 func (h *TargetAccessHandler) handleAccessRollback(w http.ResponseWriter, r *http.Request, publicationID string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	actor := r.URL.Query().Get("actor")
@@ -124,7 +124,7 @@ func (h *TargetAccessHandler) handleAccessRollback(w http.ResponseWriter, r *htt
 
 func (h *TargetAccessHandler) handleVisible(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	initiator := r.URL.Query().Get("initiator")
@@ -154,5 +154,5 @@ func respondAccessError(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 		message = "resource conflict"
 	}
-	http.Error(w, message, status)
+	respondError(w, status, message, err)
 }

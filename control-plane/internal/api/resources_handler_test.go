@@ -42,6 +42,25 @@ func TestResourcesCompensationFailuresAreLogged(t *testing.T) {
 	}
 }
 
+func TestResourcesInvalidIDUsesSafePublicError(t *testing.T) {
+	handler := &ResourcesHandler{}
+	req := httptest.NewRequest(http.MethodGet, "/v1/libraries/%20", nil)
+	resp := httptest.NewRecorder()
+
+	handler.handleLibraryByID(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, "invalid request") {
+		t.Fatalf("expected safe public error, got %q", body)
+	}
+	if strings.Contains(body, domain.ErrInvalidInput.Error()) {
+		t.Fatalf("response leaked domain error string: %q", body)
+	}
+}
+
 func TestCoreResourceCreateAndQueryEndpoints(t *testing.T) {
 	srv := newTestServer(t)
 

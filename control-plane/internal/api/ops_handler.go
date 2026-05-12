@@ -38,18 +38,18 @@ type cdbTraceUpdateRequest struct {
 }
 
 type systemOverview struct {
-	Version             config.VersionInfo `json:"version"`
-	Hostname            string             `json:"hostname"`
-	UptimeSeconds       int64              `json:"uptimeSeconds"`
-	CPULoad1m           float64            `json:"cpuLoad1m"`
-	CPULoad5m           float64            `json:"cpuLoad5m"`
-	CPULoad15m          float64            `json:"cpuLoad15m"`
-	MemoryTotalBytes    uint64             `json:"memoryTotalBytes"`
+	Version              config.VersionInfo `json:"version"`
+	Hostname             string             `json:"hostname"`
+	UptimeSeconds        int64              `json:"uptimeSeconds"`
+	CPULoad1m            float64            `json:"cpuLoad1m"`
+	CPULoad5m            float64            `json:"cpuLoad5m"`
+	CPULoad15m           float64            `json:"cpuLoad15m"`
+	MemoryTotalBytes     uint64             `json:"memoryTotalBytes"`
 	MemoryAvailableBytes uint64             `json:"memoryAvailableBytes"`
-	NetworkRxBytes      uint64             `json:"networkRxBytes"`
-	NetworkTxBytes      uint64             `json:"networkTxBytes"`
-	ISCSISessionCount   int                `json:"iscsiSessionCount"`
-	CollectedAt         time.Time          `json:"collectedAt"`
+	NetworkRxBytes       uint64             `json:"networkRxBytes"`
+	NetworkTxBytes       uint64             `json:"networkTxBytes"`
+	ISCSISessionCount    int                `json:"iscsiSessionCount"`
+	CollectedAt          time.Time          `json:"collectedAt"`
 }
 
 func NewOpsHandler(health *orchestration.HealthService, query *audit.QueryService, portalPort int, registry ...*metrics.MetricsRegistry) *OpsHandler {
@@ -105,7 +105,7 @@ func (h *OpsHandler) handleAuditEvents(w http.ResponseWriter, r *http.Request) {
 
 func (h *OpsHandler) handleSystemOverview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 		return
 	}
 	respondJSON(w, http.StatusOK, h.systemOverviewSnapshot())
@@ -127,7 +127,7 @@ func (h *OpsHandler) handleCDBTrace(w http.ResponseWriter, r *http.Request) {
 		}
 		respondJSON(w, http.StatusOK, h.cdbTraceSnapshot())
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 

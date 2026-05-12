@@ -40,6 +40,9 @@ func TestMetricsHandler_ResponseFormat(t *testing.T) {
 	if !strings.Contains(out, "holo_audit_journal_failed 0") {
 		t.Errorf("Missing holo_audit_journal_failed %s", out)
 	}
+	if !strings.Contains(out, "holo_audit_journal_parse_errors_total 0") {
+		t.Errorf("Missing holo_audit_journal_parse_errors_total %s", out)
+	}
 }
 
 func TestMetricsHandler_RejectsUnsupportedMethod(t *testing.T) {
