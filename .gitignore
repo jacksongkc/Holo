@@ -43,6 +43,7 @@ specs/
 docs/
 .github/
 VeeamLogs/
+DBackupLogs/
 
 # Codex and Claude files
 AGENTS.md
