@@ -49,33 +49,6 @@ function normalizeCartridgePrefix(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
 }
 
-function nextCartridgeBarcode(prefix: string, generation: number, offset: number, cartridges: VirtualCartridge[]): string | null {
-  const safePrefix = normalizeCartridgePrefix(prefix) || "VTA";
-  const generationSuffix = String(generation).padStart(2, "0");
-  const pattern = new RegExp(`^${safePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d{3})L${generationSuffix}$`, "i");
-  const used = new Set<number>();
-  for (const cartridge of cartridges) {
-    for (const label of [cartridge.cartridgeId, cartridge.barcode]) {
-      const match = pattern.exec(label || "");
-      if (match) {
-        used.add(Number.parseInt(match[1], 10));
-      }
-    }
-  }
-  let sequence = 0;
-  let remaining = offset;
-  while (sequence <= 999) {
-    if (!used.has(sequence)) {
-      if (remaining === 0) {
-        return `${safePrefix}${String(sequence).padStart(3, "0")}L${generationSuffix}`;
-      }
-      remaining -= 1;
-    }
-    sequence += 1;
-  }
-  return null;
-}
-
 function isLibraryOnline(status: string | undefined): boolean {
   const normalized = (status || "").toLowerCase();
   return normalized === "online" || normalized === "active" || normalized === "ready";
@@ -215,26 +188,12 @@ export function ResourceManagePage() {
 
   const slotCells = useMemo(() => {
     const cartridgesByIndex = new Map<number, VirtualCartridge>();
-    const unplaced: VirtualCartridge[] = [];
     for (const cartridge of slotCartridges) {
       const address = cartridge.currentElementAddress;
       const index = address == null ? -1 : address - slotStartAddress;
       if (index >= 0 && index < slotCount && !cartridgesByIndex.has(index)) {
         cartridgesByIndex.set(index, cartridge);
-      } else {
-        unplaced.push(cartridge);
       }
-    }
-    let nextFreeIndex = 0;
-    for (const cartridge of unplaced) {
-      while (nextFreeIndex < slotCount && cartridgesByIndex.has(nextFreeIndex)) {
-        nextFreeIndex += 1;
-      }
-      if (nextFreeIndex >= slotCount) {
-        break;
-      }
-      cartridgesByIndex.set(nextFreeIndex, cartridge);
-      nextFreeIndex += 1;
     }
     return Array.from({ length: slotCount }, (_, index) => {
       return {
@@ -396,13 +355,8 @@ export function ResourceManagePage() {
           )
         : tapeProfile.capacityBytes;
       for (let idx = 0; idx < quantity; idx += 1) {
-        const barcode = nextCartridgeBarcode(prefix, tapeProfile.ltoGeneration, idx, libraryCartridges);
-        if (!barcode) {
-          throw new Error(t("resources.cartridgePrefixExhausted"));
-        }
         await api.resources.createCartridge({
-          cartridgeId: barcode,
-          barcode,
+          barcodePrefix: prefix,
           poolId: cartridgeForm.poolId,
           libraryId: library.libraryId,
           capacityBytes,

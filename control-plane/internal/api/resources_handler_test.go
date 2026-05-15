@@ -656,6 +656,246 @@ func TestLibrarySlotCountSyncWritesAllConfiguredSlots(t *testing.T) {
 	}
 }
 
+func TestAddLibrarySlotDoesNotCreateCartridge(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-add-empty-slot", "drive-add-empty-slot", 2)
+	createSlotFlowCartridge(t, srv, "lib-add-empty-slot", "VTA000L06", false)
+	createSlotFlowCartridge(t, srv, "lib-add-empty-slot", "VTA001L06", false)
+
+	addReq := newAuthedRequest(http.MethodPost, "/v1/libraries/lib-add-empty-slot/slots", bytes.NewBufferString(`{"count":1,"actor":"web-console"}`))
+	addResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(addResp, addReq)
+	if addResp.Code != http.StatusOK {
+		t.Fatalf("expected add slot 200, got %d body=%s", addResp.Code, addResp.Body.String())
+	}
+
+	cartridges := srv.resources.repo.ListCartridges(context.Background())
+	count := 0
+	for _, cartridge := range cartridges {
+		if cartridge != nil && cartridge.LibraryID == "lib-add-empty-slot" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected add slot to leave cartridge count at 2, got %d", count)
+	}
+	slots := readExistingSlotLabels("lib-add-empty-slot", "drive-add-empty-slot")
+	if len(slots) != 3 {
+		t.Fatalf("expected 3 slots after expansion, got %#v", slots)
+	}
+	if slots[0] != "VTA000L06" || slots[1] != "VTA001L06" || slots[2] != "" {
+		t.Fatalf("expected new slot to be empty, got %#v", slots)
+	}
+}
+
+func TestLibrarySlotSyncRepairsDuplicateExistingLabels(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-duplicate-slot-labels", "drive-duplicate-slot-labels", 3)
+	createSlotFlowCartridge(t, srv, "lib-duplicate-slot-labels", "VTA000L06", false)
+	createSlotFlowCartridge(t, srv, "lib-duplicate-slot-labels", "VTA001L06", false)
+
+	slotsPath := filepath.Join(mediaStateDir, "lib-duplicate-slot-labels__drive-duplicate-slot-labels.slots")
+	if err := os.WriteFile(slotsPath, []byte("VTA000L06\nVTA001L06\nVTA000L06\n"), 0o644); err != nil {
+		t.Fatalf("write corrupted slots: %v", err)
+	}
+
+	if err := srv.resources.syncLibrarySlotsToSharedState(context.Background(), "lib-duplicate-slot-labels"); err != nil {
+		t.Fatalf("sync library slots: %v", err)
+	}
+	slots := readExistingSlotLabels("lib-duplicate-slot-labels", "drive-duplicate-slot-labels")
+	if len(slots) != 3 {
+		t.Fatalf("expected 3 slots after repair, got %#v", slots)
+	}
+	if slots[0] != "VTA000L06" || slots[1] != "VTA001L06" || slots[2] != "" {
+		t.Fatalf("expected duplicate label to be cleared, got %#v", slots)
+	}
+}
+
+func TestLibrarySlotSyncLeavesDeletedSlotEmptyWithUnassignedBacklog(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-delete-hole", "drive-delete-hole", 3)
+	createSlotFlowCartridge(t, srv, "lib-delete-hole", "VTA000L06", false)
+	createSlotFlowCartridge(t, srv, "lib-delete-hole", "VTA001L06", false)
+	createSlotFlowCartridge(t, srv, "lib-delete-hole", "VTA002L06", false)
+	createUnassignedSlotFlowCartridge(t, srv, "lib-delete-hole", "VTA003L06")
+
+	deleteReq := newAuthedRequest(http.MethodPost, "/v1/cartridges/VTA001L06/delete", nil)
+	deleteResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(deleteResp, deleteReq)
+	if deleteResp.Code != http.StatusNoContent {
+		t.Fatalf("expected delete cartridge 204, got %d body=%s", deleteResp.Code, deleteResp.Body.String())
+	}
+
+	slots := readExistingSlotLabels("lib-delete-hole", "drive-delete-hole")
+	if len(slots) != 3 {
+		t.Fatalf("expected 3 slots after delete, got %#v", slots)
+	}
+	if slots[0] != "VTA000L06" || slots[1] != "" || slots[2] != "VTA002L06" {
+		t.Fatalf("expected deleted slot to remain empty, got %#v", slots)
+	}
+}
+
+func TestLibrarySlotSyncClearsStaleInventoryWithoutFillingBacklog(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-stale-inventory", "drive-stale-inventory", 2)
+	createUnassignedSlotFlowCartridge(t, srv, "lib-stale-inventory", "VTA003L06")
+
+	slotsPath := filepath.Join(mediaStateDir, "lib-stale-inventory__drive-stale-inventory.slots")
+	if err := os.WriteFile(slotsPath, []byte("VTA001L06\n-\n"), 0o644); err != nil {
+		t.Fatalf("write stale slots: %v", err)
+	}
+
+	if err := srv.resources.syncLibrarySlotsToSharedState(context.Background(), "lib-stale-inventory"); err != nil {
+		t.Fatalf("sync library slots: %v", err)
+	}
+	slots := readExistingSlotLabels("lib-stale-inventory", "drive-stale-inventory")
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 slots after stale repair, got %#v", slots)
+	}
+	if slots[0] != "" || slots[1] != "" {
+		t.Fatalf("expected stale inventory to clear without filling backlog, got %#v", slots)
+	}
+}
+
+func TestLibrarySlotSyncRepairsLegacyAssignedSlotsFromInventory(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-legacy-assign", "drive-legacy-assign", 3)
+	createUnassignedSlotFlowCartridge(t, srv, "lib-legacy-assign", "VTA000L06")
+	createUnassignedSlotFlowCartridge(t, srv, "lib-legacy-assign", "VTA001L06")
+
+	slotsPath := filepath.Join(mediaStateDir, "lib-legacy-assign__drive-legacy-assign.slots")
+	if err := os.WriteFile(slotsPath, []byte("VTA000L06\n-\nVTA001L06\n"), 0o644); err != nil {
+		t.Fatalf("write legacy slots: %v", err)
+	}
+
+	if err := srv.resources.syncLibrarySlotsToSharedState(context.Background(), "lib-legacy-assign"); err != nil {
+		t.Fatalf("sync library slots: %v", err)
+	}
+	first, err := srv.resources.repo.FindCartridge(context.Background(), "VTA000L06")
+	if err != nil {
+		t.Fatalf("find first cartridge: %v", err)
+	}
+	second, err := srv.resources.repo.FindCartridge(context.Background(), "VTA001L06")
+	if err != nil {
+		t.Fatalf("find second cartridge: %v", err)
+	}
+	if first.AssignedSlotAddress == nil || *first.AssignedSlotAddress != 1 {
+		t.Fatalf("expected VTA000L06 assigned to slot 1, got %#v", first.AssignedSlotAddress)
+	}
+	if second.AssignedSlotAddress == nil || *second.AssignedSlotAddress != 3 {
+		t.Fatalf("expected VTA001L06 assigned to slot 3, got %#v", second.AssignedSlotAddress)
+	}
+	slots := readExistingSlotLabels("lib-legacy-assign", "drive-legacy-assign")
+	if len(slots) != 3 || slots[0] != "VTA000L06" || slots[1] != "" || slots[2] != "VTA001L06" {
+		t.Fatalf("expected legacy inventory to remain stable, got %#v", slots)
+	}
+
+	auditReq := newAuthedRequest(http.MethodGet, "/v1/audit/events", nil)
+	auditResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(auditResp, auditReq)
+	if auditResp.Code != http.StatusOK {
+		t.Fatalf("expected audit list 200, got %d body=%s", auditResp.Code, auditResp.Body.String())
+	}
+	if !strings.Contains(auditResp.Body.String(), "cartridge_slot_repaired") || !strings.Contains(auditResp.Body.String(), "legacy_unassigned") {
+		t.Fatalf("expected legacy slot repair audit event, got %s", auditResp.Body.String())
+	}
+}
+
+func TestLibrarySlotSyncUsesInventorySnapshotAcrossDrives(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-multi-drive-inventory", "drive-multi-b", 2)
+	createDriveReq := newAuthedRequest(http.MethodPost, "/v1/drives", bytes.NewBufferString(`{"driveId":"drive-multi-a","libraryId":"lib-multi-drive-inventory","slot":257}`))
+	createDriveResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createDriveResp, createDriveReq)
+	if createDriveResp.Code != http.StatusCreated {
+		t.Fatalf("expected second drive 201, got %d body=%s", createDriveResp.Code, createDriveResp.Body.String())
+	}
+	createUnassignedSlotFlowCartridge(t, srv, "lib-multi-drive-inventory", "VTA003L06")
+
+	emptyFirstDrivePath := filepath.Join(mediaStateDir, "lib-multi-drive-inventory__drive-multi-a.slots")
+	if err := os.WriteFile(emptyFirstDrivePath, []byte("-\n-\n"), 0o644); err != nil {
+		t.Fatalf("write empty first drive slots: %v", err)
+	}
+	inventorySecondDrivePath := filepath.Join(mediaStateDir, "lib-multi-drive-inventory__drive-multi-b.slots")
+	if err := os.WriteFile(inventorySecondDrivePath, []byte("VTA001L06\n-\n"), 0o644); err != nil {
+		t.Fatalf("write inventory second drive slots: %v", err)
+	}
+
+	if err := srv.resources.syncLibrarySlotsToSharedState(context.Background(), "lib-multi-drive-inventory"); err != nil {
+		t.Fatalf("sync library slots: %v", err)
+	}
+	slots := readExistingSlotLabels("lib-multi-drive-inventory", "drive-multi-a")
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 slots after sync, got %#v", slots)
+	}
+	if slots[0] != "" || slots[1] != "" {
+		t.Fatalf("expected stale inventory snapshot to prevent backlog fill on every drive, got %#v", slots)
+	}
+}
+
+func TestLibrarySlotSyncDoesNotFillBacklogWhenSnapshotIsEmpty(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-empty-snapshot", "drive-empty-snapshot", 2)
+	createUnassignedSlotFlowCartridge(t, srv, "lib-empty-snapshot", "VTA003L06")
+
+	if err := srv.resources.syncLibrarySlotsToSharedState(context.Background(), "lib-empty-snapshot"); err != nil {
+		t.Fatalf("sync library slots: %v", err)
+	}
+	slots := readExistingSlotLabels("lib-empty-snapshot", "drive-empty-snapshot")
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 slots after sync, got %#v", slots)
+	}
+	if slots[0] != "" || slots[1] != "" {
+		t.Fatalf("expected empty snapshot to remain empty instead of filling backlog, got %#v", slots)
+	}
+}
+
+func TestLibrarySlotSyncBootstrapsUnassignedCartridgesWithoutExistingInventory(t *testing.T) {
+	mediaStateDir := t.TempDir()
+	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
+
+	srv := newTestServer(t)
+	setupSlotFlowLibrary(t, srv, "lib-bootstrap-unassigned", "drive-bootstrap-unassigned", 3)
+	slotsPath := filepath.Join(mediaStateDir, "lib-bootstrap-unassigned__drive-bootstrap-unassigned.slots")
+	if err := os.Remove(slotsPath); err != nil {
+		t.Fatalf("remove bootstrap slots snapshot: %v", err)
+	}
+	createUnassignedSlotFlowCartridge(t, srv, "lib-bootstrap-unassigned", "VTA000L06")
+	createUnassignedSlotFlowCartridge(t, srv, "lib-bootstrap-unassigned", "VTA001L06")
+
+	if err := srv.resources.syncLibrarySlotsToSharedState(context.Background(), "lib-bootstrap-unassigned"); err != nil {
+		t.Fatalf("sync library slots: %v", err)
+	}
+	slots := readExistingSlotLabels("lib-bootstrap-unassigned", "drive-bootstrap-unassigned")
+	if len(slots) != 3 {
+		t.Fatalf("expected 3 slots after bootstrap, got %#v", slots)
+	}
+	if slots[0] != "VTA000L06" || slots[1] != "VTA001L06" || slots[2] != "" {
+		t.Fatalf("expected unassigned legacy cartridges to bootstrap into empty inventory, got %#v", slots)
+	}
+}
+
 func TestLibrarySlotSyncExcludesLoadedDriveMedia(t *testing.T) {
 	mediaStateDir := t.TempDir()
 	t.Setenv("HOLO_MEDIA_STATE_DIR", mediaStateDir)
@@ -915,6 +1155,52 @@ func TestCartridgeDeleteActionEndpoint(t *testing.T) {
 	srv.Router().ServeHTTP(recreateResp, recreateReq)
 	if recreateResp.Code != http.StatusConflict {
 		t.Fatalf("expected destroyed barcode conflict 409, got %d body=%s", recreateResp.Code, recreateResp.Body.String())
+	}
+}
+
+func TestCreateCartridgeAutoLabelSkipsDestroyedBarcode(t *testing.T) {
+	srv := newTestServer(t)
+
+	createPoolReq := newAuthedRequest(http.MethodPost, "/v1/storage/pools", bytes.NewBufferString(`{"poolId":"pool-auto-label","name":"Pool Auto Label","warningThresholdPct":90}`))
+	createPoolResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createPoolResp, createPoolReq)
+	if createPoolResp.Code != http.StatusCreated {
+		t.Fatalf("expected create pool 201, got %d body=%s", createPoolResp.Code, createPoolResp.Body.String())
+	}
+
+	createLibReq := newAuthedRequest(http.MethodPost, "/v1/libraries", bytes.NewBufferString(`{"libraryId":"lib-auto-label","name":"Library Auto Label"}`))
+	createLibResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createLibResp, createLibReq)
+	if createLibResp.Code != http.StatusCreated {
+		t.Fatalf("expected create library 201, got %d body=%s", createLibResp.Code, createLibResp.Body.String())
+	}
+
+	createFirstReq := newAuthedRequest(http.MethodPost, "/v1/cartridges", bytes.NewBufferString(`{"poolId":"pool-auto-label","cartridgeId":"VTA000L06","libraryId":"lib-auto-label","barcode":"VTA000L06","capacityBytes":1073741824}`))
+	createFirstResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createFirstResp, createFirstReq)
+	if createFirstResp.Code != http.StatusCreated {
+		t.Fatalf("expected create cartridge 201, got %d body=%s", createFirstResp.Code, createFirstResp.Body.String())
+	}
+
+	deleteReq := newAuthedRequest(http.MethodPost, "/v1/cartridges/VTA000L06/delete", nil)
+	deleteResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(deleteResp, deleteReq)
+	if deleteResp.Code != http.StatusNoContent {
+		t.Fatalf("expected delete cartridge 204, got %d body=%s", deleteResp.Code, deleteResp.Body.String())
+	}
+
+	createNextReq := newAuthedRequest(http.MethodPost, "/v1/cartridges", bytes.NewBufferString(`{"poolId":"pool-auto-label","libraryId":"lib-auto-label","barcodePrefix":"VTA","capacityBytes":1073741824,"ltoGeneration":6}`))
+	createNextResp := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createNextResp, createNextReq)
+	if createNextResp.Code != http.StatusCreated {
+		t.Fatalf("expected auto-label create 201, got %d body=%s", createNextResp.Code, createNextResp.Body.String())
+	}
+	var cartridge domain.VirtualCartridge
+	if err := json.Unmarshal(createNextResp.Body.Bytes(), &cartridge); err != nil {
+		t.Fatalf("decode cartridge: %v", err)
+	}
+	if cartridge.CartridgeID != "VTA001L06" || cartridge.Barcode != "VTA001L06" {
+		t.Fatalf("expected auto label to skip retired VTA000L06, got id=%q barcode=%q", cartridge.CartridgeID, cartridge.Barcode)
 	}
 }
 
@@ -1279,6 +1565,9 @@ func TestCreateCartridgeRequiresExplicitSlotExpansionWhenFull(t *testing.T) {
 	}
 	if !strings.Contains(auditResp.Body.String(), "library_add_slots") || !strings.Contains(auditResp.Body.String(), "create_cartridge_expand_slots") {
 		t.Fatalf("expected slot expansion audit event, got %s", auditResp.Body.String())
+	}
+	if !strings.Contains(auditResp.Body.String(), "cartridge_create") || !strings.Contains(auditResp.Body.String(), `"assignedSlotAddress":1025`) {
+		t.Fatalf("expected cartridge create audit event, got %s", auditResp.Body.String())
 	}
 }
 
@@ -1761,6 +2050,14 @@ func createSlotFlowCartridge(t *testing.T, srv *Server, libraryID, cartridgeID s
 		t.Fatalf("decode cartridge: %v", err)
 	}
 	return cartridge
+}
+
+func createUnassignedSlotFlowCartridge(t *testing.T, srv *Server, libraryID, cartridgeID string) {
+	t.Helper()
+	cartridge := domain.NewVirtualCartridge(cartridgeID, "pool-"+libraryID, libraryID, cartridgeID, 549755813888)
+	if err := srv.resources.repo.CreateCartridge(context.Background(), cartridge); err != nil {
+		t.Fatalf("create unassigned cartridge %s: %v", cartridgeID, err)
+	}
 }
 
 func exportSlotFlowCartridge(t *testing.T, srv *Server, cartridgeID string) {

@@ -78,6 +78,39 @@ describe("ResourceManagePage", () => {
     expect(cartridgeSlot).toHaveAttribute("data-slot-address", "1034");
   });
 
+  it("does not place cartridges without a reported slot address", async () => {
+    vi.mocked(api.resources.listCartridges).mockResolvedValue([
+      {
+        cartridgeId: "VTA000L06",
+        poolId: "pool-a",
+        libraryId: "lib-a",
+        barcode: "VTA000L06",
+        capacityBytes: 1000,
+        usedBytes: 100,
+        lifecycleState: "available",
+        retentionState: "none",
+        currentElementAddress: 1034,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        cartridgeId: "VTA031L06",
+        poolId: "pool-a",
+        libraryId: "lib-a",
+        barcode: "VTA031L06",
+        capacityBytes: 1000,
+        usedBytes: 0,
+        lifecycleState: "available",
+        retentionState: "none",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+    renderManagePage();
+    expect(await screen.findByTitle("VTA000L06 (VTA000L06)")).toBeInTheDocument();
+    expect(screen.queryByText("VTA031L06")).not.toBeInTheDocument();
+  });
+
   it("requires explicit slot expansion when creating more cartridges than empty slots", async () => {
     renderManagePage();
     const addCartridgeButtons = await screen.findAllByRole("button", { name: "Add Cartridge" });
@@ -89,8 +122,12 @@ describe("ResourceManagePage", () => {
     await userEvent.click(screen.getByLabelText(/Add slot and insert cartridge/));
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(api.resources.createCartridge).toHaveBeenCalledWith(
-      expect.objectContaining({ expandSlots: true })
+      expect.objectContaining({ barcodePrefix: "VTA", expandSlots: true })
     );
+    const calls = vi.mocked(api.resources.createCartridge).mock.calls;
+    const request = calls[calls.length - 1]?.[0];
+    expect(request).not.toHaveProperty("barcode");
+    expect(request).not.toHaveProperty("cartridgeId");
   });
 
   it("offers to add a slot when vault import has no empty slot", async () => {
