@@ -2240,12 +2240,12 @@ pub(crate) fn drive_mam_attributes(
         // Medium attributes
         ReadAttributeEntry {
             id: 0x0400,
-            format: 0x81,
+            format: 0x01,
             value: fixed_ascii_value(profile.vendor.trim(), 8),
         },
         ReadAttributeEntry {
             id: 0x0401,
-            format: 0x81,
+            format: 0x01,
             value: fixed_ascii_value(medium_serial, 32),
         },
         ReadAttributeEntry {
@@ -2642,15 +2642,28 @@ pub(crate) fn drive_medium_descriptor(
 
 pub(crate) fn medium_type_for_loaded_media(
     state: &TapeState,
-    _profile: &DeviceIdentityProfile,
+    profile: &DeviceIdentityProfile,
 ) -> u8 {
     if state.mount_state != crate::scsi_tape::state::MountState::Loaded {
         return 0;
     }
-    // Linux + Veeam treats legacy LTO medium type values such as 0x48 as
-    // unknown. Density and generation remain available through block
-    // descriptors, REPORT DENSITY SUPPORT, and MAM capacity attributes.
-    0
+    medium_type_for_profile(state, profile)
+}
+
+pub(crate) fn medium_type_for_profile(
+    state: &TapeState,
+    profile: &DeviceIdentityProfile,
+) -> u8 {
+    let generation = lto_generation_for_profile(profile);
+    let base = match generation {
+        1..=9 => generation.saturating_mul(0x10).saturating_add(0x08),
+        _ => 0x68,
+    };
+    if state.retention_policy.is_worm_media {
+        base.saturating_add(0x04)
+    } else {
+        base
+    }
 }
 
 pub(crate) fn device_specific_mode_parameter(state: &TapeState) -> u8 {

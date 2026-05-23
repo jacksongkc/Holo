@@ -80,6 +80,22 @@ mod tests {
         mutex.clear_poison();
     }
 
+    #[test]
+    fn read_attribute_trace_suffix_decodes_attribute_entries() {
+        let cdb = vec![0x8C, 0x00, 0, 0, 0, 0, 0, 0, 0x04, 0x01, 0, 0, 0, 0x40, 0, 0];
+        let payload = vec![
+            0x00, 0x00, 0x00, 0x0B, // declared payload length
+            0x04, 0x01, 0x01, 0x00, 0x03, b'A', b'B', b'C',
+            0x04, 0x08, 0x80, 0x00, 0x01, 0x98,
+        ];
+
+        let suffix = read_attribute_trace_suffix(&cdb, &payload);
+
+        assert!(suffix.contains("read_attr_declared_len=11"));
+        assert!(suffix.contains("id=0x0401 fmt=0x01 len=3 hex=[41 42 43] ascii=\"ABC\""));
+        assert!(suffix.contains("id=0x0408 fmt=0x80 len=1 hex=[98] ascii=\".\""));
+    }
+
     fn log_param_u32(page: &[u8], code: u16) -> Option<u32> {
         let mut cursor = 4usize;
         while page.len().saturating_sub(cursor) >= 4 {
@@ -1676,12 +1692,27 @@ mod tests {
         let response = dispatch_raw_cdb(&mut state, &cdb, &[]);
         assert_eq!(response.status, SCSI_STATUS_GOOD);
         assert!(response.reply.len() >= 8);
-        assert_eq!(response.reply[2], 0x00);
+        assert_eq!(response.reply[2], 0x6C);
         assert_eq!(
             response.reply[3] & 0x80,
             0x80,
             "WP bit should be set for locked WORM"
         );
+    }
+
+    #[test]
+    fn test_drive_mode_sense_6_medium_type_matches_loaded_lto_generation() {
+        let mut state = crate::scsi_tape::state::TapeState::new("drive-ms6-lto9");
+        state.mount_state = crate::scsi_tape::state::MountState::Loaded;
+        let profile = crate::scsi_tape::profiles::resolve_drive_profile("ibm-ult3580-td9");
+        let cdb = vec![0x1A, 0x00, 0x00, 0x00, 0x0C, 0x00];
+
+        let response = mode_sense_6_drive(&state, &cdb, &profile);
+        assert_eq!(response.status, SCSI_STATUS_GOOD);
+        assert!(response.reply.len() >= 12);
+        assert_eq!(response.reply[1], 0x98);
+        assert_eq!(response.reply[3], 0x08);
+        assert_eq!(response.reply[4], 0x5F);
     }
 
     #[test]
@@ -2151,6 +2182,26 @@ mod tests {
     }
 
     #[test]
+    fn test_drive_read_attribute_medium_type_matches_loaded_lto_generation() {
+        let mut state = crate::scsi_tape::state::TapeState::new("drive-attr-medium-type-lto9");
+        state.mount_state = crate::scsi_tape::state::MountState::Loaded;
+        let profile = crate::scsi_tape::profiles::resolve_drive_profile("ibm-ult3580-td9");
+        let cdb = vec![
+            0x8C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // op/service + partition
+            0x04, 0x08, // first attribute (medium type)
+            0x00, 0x00, 0x00, 0x20, // allocation length
+            0x00, 0x00,
+        ];
+
+        let response = read_attribute_drive(&mut state, &cdb, &profile);
+        assert_eq!(response.status, SCSI_STATUS_GOOD);
+        assert_eq!(&response.reply[4..6], &[0x04, 0x08]);
+        assert_eq!(response.reply[6], 0x80);
+        assert_eq!(&response.reply[7..9], &[0x00, 0x01]);
+        assert_eq!(response.reply[9], 0x98);
+    }
+
+    #[test]
     fn test_drive_read_attribute_capacity_is_reported_in_mib_units() {
         let mut state = crate::scsi_tape::state::TapeState::new("drive-attr-cap-mib");
         state.mount_state = crate::scsi_tape::state::MountState::Loaded;
@@ -2209,7 +2260,7 @@ mod tests {
         );
         assert!(response.reply.len() >= 41);
         assert_eq!(&response.reply[4..6], &[0x04, 0x01]);
-        assert_eq!(response.reply[6], 0x81);
+        assert_eq!(response.reply[6], 0x01);
         assert_eq!(&response.reply[7..9], &[0x00, 0x20]);
         assert_eq!(
             &response.reply[9..9 + cartridge_id.len()],
@@ -2221,6 +2272,17 @@ mod tests {
             !serial.contains(&drive_id),
             "medium serial must not be derived from drive id: {serial:?}"
         );
+        let medium_type_offset = response
+            .reply
+            .windows(2)
+            .position(|pair| pair == [0x04, 0x08])
+            .expect("DBackup-shaped 0x0401 read should include medium type");
+        assert_eq!(response.reply[medium_type_offset + 2], 0x80);
+        assert_eq!(
+            &response.reply[medium_type_offset + 3..medium_type_offset + 5],
+            &[0x00, 0x01]
+        );
+        assert_eq!(response.reply[medium_type_offset + 5], 0x68);
 
         let _ = write_shared_loaded_cartridge(&drive_id, None);
     }
@@ -2305,7 +2367,7 @@ mod tests {
         let mode_sense =
             dispatch_raw_cdb(&mut state, &[0x5A, 0x00, 0x10, 0, 0, 0, 0, 0, 0x40, 0], &[]);
         assert_eq!(mode_sense.status, SCSI_STATUS_GOOD);
-        assert_eq!(mode_sense.reply[2], 0x00);
+        assert_eq!(mode_sense.reply[2], 0x68);
         assert_eq!(&mode_sense.reply[6..8], &[0x00, 0x08]);
         let reported_blocks = u32::from_be_bytes([
             0x00,
@@ -2396,7 +2458,8 @@ mod tests {
             (0x020Bu16, 0x81u8),
             (0x020Cu16, 0x81u8),
             (0x020Du16, 0x81u8),
-            (0x0400u16, 0x81u8),
+            (0x0400u16, 0x01u8),
+            (0x0401u16, 0x01u8),
             (0x0404u16, 0x81u8),
             (0x0407u16, 0x80u8),
         ] {
@@ -2427,7 +2490,7 @@ mod tests {
         assert_eq!(&response.reply[4..6], &[0x04, 0x08]);
         assert_eq!(response.reply[6], 0x80);
         assert_eq!(&response.reply[7..9], &[0x00, 0x01]);
-        assert_eq!(response.reply[9], 0x00);
+        assert_eq!(response.reply[9], 0x68);
     }
 
     #[test]
