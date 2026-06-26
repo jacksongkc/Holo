@@ -87,3 +87,11 @@ func respondJSON(w http.ResponseWriter, status int, v any) {
 		log.Printf("api response write failure status=%d err=%v", status, err)
 	}
 }
+
+func getCurrentUser(r *http.Request) string {
+	username := r.Header.Get("X-Holo-Username")
+	if username == "" {
+		return "system"
+	}
+	return username
+}

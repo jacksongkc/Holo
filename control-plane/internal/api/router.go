@@ -16,6 +16,7 @@ import (
 	"github.com/Holo-VTL/Holo/control-plane/internal/audit"
 	"github.com/Holo-VTL/Holo/control-plane/internal/auth"
 	"github.com/Holo-VTL/Holo/control-plane/internal/config"
+	"github.com/Holo-VTL/Holo/control-plane/internal/domain"
 	"github.com/Holo-VTL/Holo/control-plane/internal/metrics"
 	"github.com/Holo-VTL/Holo/control-plane/internal/orchestration"
 	"github.com/Holo-VTL/Holo/control-plane/internal/repo/memory"
@@ -36,6 +37,8 @@ type Server struct {
 	discovery  *TargetDiscoveryHandler
 	metricsHD  *MetricsHandler
 	auditHD    *AuditHandler
+	users      *UserHandler
+	settings   *SettingsHandler
 	runtime    *orchestration.TargetRuntimeService
 	apiKey     string
 	metadataDB *sql.DB
@@ -70,6 +73,8 @@ func NewServerWithConfigE(cfg config.Config) (*Server, error) {
 	accessRepo := memory.NewTargetAccessRepo()
 	accessPolicyRepo := sqliterepo.NewAccessPolicyRepo(metadataDB)
 	retentionPolicyRepo := sqliterepo.NewRetentionPolicyRepo(metadataDB)
+	userRepo := sqliterepo.NewUserRepo(metadataDB)
+	settingsRepo := sqliterepo.NewSettingsRepo(metadataDB)
 
 	registry := metrics.NewMetricsRegistry()
 	memW := audit.NewMemoryWriter()
@@ -156,12 +161,17 @@ func NewServerWithConfigE(cfg config.Config) (*Server, error) {
 		targets:    NewTargetHandlerWithLocalMount(targetRuntime, accessHandler, localMount),
 		metricsHD:  NewMetricsHandler(registry, storageutil.ResolvePoolStorageBaseDir()),
 		auditHD:    NewAuditHandler(query, auditWriter),
+		users:      NewUserHandler(userRepo),
+		settings:   NewSettingsHandler(settingsRepo),
 		runtime:    targetRuntime,
 		apiKey:     strings.TrimSpace(cfg.APIKey),
 		metadataDB: metadataDB,
 		limiter:    newRateLimiter(cfg.TrustedProxyCIDRs),
 		journal:    journal,
 	}
+	s.users.SetAudit(s.auditHD)
+	s.users.SetSettingsRepo(settingsRepo)
+	s.settings.SetAudit(s.auditHD)
 	if s.apiKey == "" {
 		tracing.LogInfo(context.Background(), "control-plane", "management API key is not configured; internal no-login mode is enabled")
 	}
@@ -181,7 +191,17 @@ func NewServerWithConfigE(cfg config.Config) (*Server, error) {
 }
 
 func (s *Server) Router() http.Handler {
-	return tracing.TraceMiddleware(s.metricsMiddleware(s.securityHeadersMiddleware(s.rateLimitMiddleware(s.authMiddleware(s.mux)))))
+	return tracing.TraceMiddleware(
+		s.metricsMiddleware(
+			s.securityHeadersMiddleware(
+				s.rateLimitMiddleware(
+					s.authMiddleware(
+						s.authorizationMiddleware(s.mux),
+					),
+				),
+			),
+		),
+	)
 }
 
 func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
@@ -221,6 +241,7 @@ func (s *Server) Close() error {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/healthz", s.ops.handleHealth)
+	s.mux.HandleFunc("/", s.handleRoot)
 	s.mux.HandleFunc("/ui", s.handleUIRoot)
 	s.mux.HandleFunc("/ui/", s.handleUIAssets)
 
@@ -241,8 +262,15 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/v1/targets/local-mount", s.targets.handleLocalMount)
 	s.mux.HandleFunc("/v1/targets/visible", s.access.handleVisible)
 	s.mux.HandleFunc("/v1/targets/discovery", s.discovery.handleDiscovery)
+	s.mux.HandleFunc("/v1/auth/login", s.users.handleLogin)
+	s.mux.HandleFunc("/v1/users", s.handleUsers)
+	s.mux.HandleFunc("/v1/users/", s.handleUserByID)
+	s.mux.HandleFunc("/v1/users/change-password/", s.users.handleChangePassword)
+	s.mux.HandleFunc("/v1/users/two-factor", s.users.handleTwoFactorSetup)
+	s.mux.HandleFunc("/v1/users/me", s.users.handleGetMe)
 	s.mux.HandleFunc("/v1/audit/events", s.ops.handleAuditEvents)
 	s.mux.HandleFunc("/v1/system/overview", s.ops.handleSystemOverview)
+	s.mux.HandleFunc("/v1/system/settings", s.settings.ServeHTTP)
 	s.mux.HandleFunc("/v1/ops/cdb-trace", s.ops.handleCDBTrace)
 	s.mux.HandleFunc("/v1/support/bundle", s.ops.handleSupportBundle)
 
@@ -252,8 +280,7 @@ func (s *Server) registerRoutes() {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Health endpoint remains intentionally unauthenticated for liveness probing.
-		if r.URL.Path == "/healthz" || isUIRoute(r) {
+		if r.URL.Path == "/healthz" || isUIRoute(r) || r.URL.Path == "/v1/auth/login" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -276,6 +303,32 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) authorizationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" || isUIRoute(r) || r.URL.Path == "/v1/auth/login" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		role := domain.UserRole(r.Header.Get("X-Holo-Role"))
+		if role == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		perm := mapPathToPermission(r.URL.Path, r.Method)
+		permissions := rolePermissions[role]
+		for _, p := range permissions {
+			if p == perm {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		respondError(w, http.StatusForbidden, "insufficient permissions", nil)
 	})
 }
 
@@ -333,6 +386,32 @@ func normalizedEscapedPath(r *http.Request) (string, bool) {
 	}
 	cleaned := path.Clean("/" + strings.TrimPrefix(decoded, "/"))
 	return cleaned, true
+}
+
+func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.users.handleListUsers(w, r)
+	} else if r.Method == http.MethodPost {
+		s.users.handleCreateUser(w, r)
+	} else {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+	}
+}
+
+func (s *Server) handleUserByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.users.handleGetUser(w, r)
+	} else if r.Method == http.MethodPut {
+		s.users.handleUpdateUser(w, r)
+	} else if r.Method == http.MethodDelete {
+		s.users.handleDeleteUser(w, r)
+	} else {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+	}
+}
+
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/ui/", http.StatusTemporaryRedirect)
 }
 
 func (s *Server) handleUIRoot(w http.ResponseWriter, r *http.Request) {
