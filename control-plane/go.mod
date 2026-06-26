@@ -2,7 +2,10 @@ module github.com/Holo-VTL/Holo/control-plane
 
 go 1.24.0
 
-require modernc.org/sqlite v1.44.3
+require (
+	golang.org/x/crypto v0.27.0
+	modernc.org/sqlite v1.44.3
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
