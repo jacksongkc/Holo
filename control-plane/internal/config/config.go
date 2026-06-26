@@ -51,7 +51,7 @@ func load(strict bool) (Config, error) {
 		TargetBackstoreDir:   getenv("HOLO_TARGET_BACKSTORE_DIR", "/var/lib/holo/targets"),
 		TargetBackstoreSize:  targetBackstoreSize,
 		TargetRuntimeUseSudo: targetRuntimeUseSudo,
-		WebUIDistDir:         getenv("HOLO_WEB_UI_DIST", "./web-console/dist"),
+		WebUIDistDir:         getenv("HOLO_WEB_UI_DIST", "../web-console/dist"),
 		TrustedProxyCIDRs:    getenv("HOLO_TRUSTED_PROXY_CIDRS", ""),
 	}, errors.Join(portalErr, backstoreErr, sudoErr)
 }
