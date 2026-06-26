@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type migration struct {
@@ -187,6 +189,66 @@ CREATE TABLE IF NOT EXISTS local_mount_settings (
 ALTER TABLE virtual_cartridges ADD COLUMN assigned_slot_address INTEGER;
 `,
 	},
+	{
+		version: 7,
+		sql: `
+CREATE TABLE IF NOT EXISTS users (
+  user_id TEXT PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'viewer',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_login_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+`,
+	},
+	{
+		version: 8,
+		sql: `
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  target_name TEXT,
+  ip_address TEXT,
+  result TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+`,
+	},
+	{
+		version: 9,
+		sql: `
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`,
+	},
+	{
+		version: 10,
+		sql: `
+ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN two_factor_secret TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -205,7 +267,31 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	if err := ensureAdminUser(ctx, db); err != nil {
+		return err
+	}
 	return nil
+}
+
+func ensureAdminUser(ctx context.Context, db *sql.DB) error {
+	var exists bool
+	err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE username = 'admin')`).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	now := formatTime(time.Now().UTC())
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO users (user_id, username, email, password_hash, role, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, "admin", "admin", "admin@holo-vtl.local", string(passwordHash), "admin", "active", now, now)
+	return err
 }
 
 func appliedVersions(ctx context.Context, db *sql.DB) (map[int]bool, error) {
